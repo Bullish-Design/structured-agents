@@ -1,0 +1,99 @@
+"""structured-agents: Structured tool orchestration with grammar-constrained LLM outputs."""
+
+from structured_agents.backends import (
+    GrailBackend,
+    GrailBackendConfig,
+    PythonBackend,
+    Snapshot,
+    ToolBackend,
+)
+from structured_agents.bundles import AgentBundle, load_bundle
+from structured_agents.client import (
+    CompletionResponse,
+    LLMClient,
+    OpenAICompatibleClient,
+)
+from structured_agents.exceptions import (
+    BackendError,
+    BundleError,
+    KernelError,
+    PluginError,
+    StructuredAgentsError,
+    ToolExecutionError,
+)
+from structured_agents.history import (
+    HistoryStrategy,
+    KeepAllHistory,
+    SlidingWindowHistory,
+)
+from structured_agents.kernel import AgentKernel
+from structured_agents.observer import (
+    CompositeObserver,
+    KernelEndEvent,
+    KernelStartEvent,
+    ModelRequestEvent,
+    ModelResponseEvent,
+    NullObserver,
+    Observer,
+    ToolCallEvent,
+    ToolResultEvent,
+    TurnCompleteEvent,
+)
+from structured_agents.plugins import FunctionGemmaPlugin, ModelPlugin, QwenPlugin
+from structured_agents.types import (
+    KernelConfig,
+    Message,
+    RunResult,
+    StepResult,
+    TokenUsage,
+    ToolCall,
+    ToolResult,
+    ToolSchema,
+)
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "__version__",
+    "AgentKernel",
+    "KernelConfig",
+    "Message",
+    "ToolCall",
+    "ToolResult",
+    "ToolSchema",
+    "StepResult",
+    "RunResult",
+    "TokenUsage",
+    "ModelPlugin",
+    "FunctionGemmaPlugin",
+    "QwenPlugin",
+    "ToolBackend",
+    "PythonBackend",
+    "GrailBackend",
+    "GrailBackendConfig",
+    "Snapshot",
+    "AgentBundle",
+    "load_bundle",
+    "Observer",
+    "NullObserver",
+    "CompositeObserver",
+    "KernelStartEvent",
+    "KernelEndEvent",
+    "ModelRequestEvent",
+    "ModelResponseEvent",
+    "ToolCallEvent",
+    "ToolResultEvent",
+    "TurnCompleteEvent",
+    "HistoryStrategy",
+    "SlidingWindowHistory",
+    "KeepAllHistory",
+    "LLMClient",
+    "OpenAICompatibleClient",
+    "CompletionResponse",
+    "StructuredAgentsError",
+    "KernelError",
+    "ToolExecutionError",
+    "PluginError",
+    "BundleError",
+    "BackendError",
+]
