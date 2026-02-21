@@ -74,6 +74,10 @@ Do NOT:
 
 All dependency behavior must be verifiable from `.context/`.
 
+### Required Dependencies
+
+vLLM and xgrammar are required for this repo. Do not add runtime fallbacks or try/except branches for missing dependencies. Fail fast at startup with a clear install message if they are unavailable.
+
 ---
 
 # Skill Usage Protocol
