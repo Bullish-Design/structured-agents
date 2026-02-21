@@ -111,6 +111,7 @@ This is mandatory, not optional.
 * Avoid cross-module coupling unless required.
 * Do not introduce circular imports.
 * Prefer explicit imports.
+* Store Grail `.pym` scripts under `agents/` (not the repo root).
 
 ## Edits
 

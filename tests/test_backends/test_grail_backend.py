@@ -16,7 +16,7 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "grail_tools"
 class TestGrailBackend:
     @pytest.mark.asyncio
     async def test_execute_returns_result(self) -> None:
-        backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd()))
+        backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd() / "agents"))
 
         tool_call = ToolCall(id="123", name="add_numbers", arguments={"x": 2, "y": 5})
         tool_schema = ToolSchema(
@@ -36,7 +36,7 @@ class TestGrailBackend:
 
     @pytest.mark.asyncio
     async def test_context_provider_output_is_combined(self) -> None:
-        backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd()))
+        backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd() / "agents"))
 
         tool_call = ToolCall(id="123", name="add_numbers", arguments={"x": 1, "y": 1})
         tool_schema = ToolSchema(

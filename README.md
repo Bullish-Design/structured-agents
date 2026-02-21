@@ -90,7 +90,7 @@ from pathlib import Path
 
 from structured_agents import GrailBackend, GrailBackendConfig, ToolSchema
 
-backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd()))
+backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd() / "agents"))
 
 schema = ToolSchema(
     name="read_file",
@@ -100,7 +100,7 @@ schema = ToolSchema(
         "properties": {"path": {"type": "string"}},
         "required": ["path"],
     },
-    script_path=Path("tools/read_file.pym"),
+    script_path=Path("agents/read_file.pym"),
 )
 ```
 

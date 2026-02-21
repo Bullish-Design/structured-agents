@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class GrailBackendConfig:
     """Configuration for the Grail backend."""
 
-    grail_dir: Path = field(default_factory=Path.cwd)
+    grail_dir: Path = field(default_factory=lambda: Path.cwd() / "agents")
     max_workers: int = 4
     timeout: float = 300.0
     limits: dict[str, Any] = field(
