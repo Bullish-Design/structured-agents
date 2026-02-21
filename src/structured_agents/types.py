@@ -42,7 +42,7 @@ class KernelConfig(BaseModel):
 class Message:
     """A conversation message in the agent loop."""
 
-    role: Literal["system", "user", "assistant", "tool"]
+    role: Literal["system", "developer", "user", "assistant", "tool"]
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
     tool_call_id: str | None = None

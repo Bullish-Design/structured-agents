@@ -1,0 +1,10 @@
+{
+  "inputs": [
+    {
+      "name": "show_all",
+      "type": "bool",
+      "required": false,
+      "default": false
+    }
+  ]
+}

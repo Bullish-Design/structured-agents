@@ -130,5 +130,7 @@ class FunctionGemmaPlugin:
             return None
 
         return {
-            "guided_grammar": grammar,
+            "structured_outputs": {
+                "grammar": grammar,
+            }
         }

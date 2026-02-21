@@ -41,7 +41,7 @@ def load_shellper_tools() -> tuple[str, list[ToolSchema]]:
 
 
 async def run_demo() -> None:
-    task_description, tools = load_shellper_tools()
+    _task_description, tools = load_shellper_tools()
 
     config = KernelConfig(
         base_url="http://remora-server:8000/v1",
@@ -58,13 +58,12 @@ async def run_demo() -> None:
         backend=backend,
     )
 
-    system_prompt = (
-        "You are a model that can do function calling with the following functions. "
-        f"Task: {task_description}"
+    developer_prompt = (
+        "You are a model that can do function calling with the following functions."
     )
 
     messages = [
-        Message(role="system", content=system_prompt),
+        Message(role="developer", content=developer_prompt),
         Message(
             role="user",
             content="Show me what files are in my current directory please.",
