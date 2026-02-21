@@ -1,7 +1,7 @@
 from grail import Input
 
-file_name1: str = Input("file_name1")
-file_name2: str = Input("file_name2")
+file_name1: str = Input("file_name1", default="file_a.txt")
+file_name2: str = Input("file_name2", default="file_b.txt")
 
 try:
     result = {

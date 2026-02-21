@@ -1,7 +1,7 @@
 from grail import Input
 
 path: str = Input("path", default=".")
-name: str | None = Input("name", default=None)
+name: str = Input("name", default="")
 
 try:
     if name:

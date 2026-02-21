@@ -1,6 +1,6 @@
 from grail import Input
 
-dir_name: str = Input("dir_name")
+dir_name: str = Input("dir_name", default="new_folder")
 
 try:
     result = {

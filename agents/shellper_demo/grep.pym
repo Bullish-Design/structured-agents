@@ -1,7 +1,7 @@
 from grail import Input
 
-file_name: str = Input("file_name")
-pattern: str = Input("pattern")
+file_name: str = Input("file_name", default="notes.txt")
+pattern: str = Input("pattern", default="TODO")
 
 try:
     matches = [

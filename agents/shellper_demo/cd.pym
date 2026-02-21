@@ -1,6 +1,6 @@
 from grail import Input
 
-folder: str = Input("folder")
+folder: str = Input("folder", default="home")
 
 try:
     result = {

@@ -1,7 +1,7 @@
 from grail import Input
 
-source: str = Input("source")
-destination: str = Input("destination")
+source: str = Input("source", default="file.txt")
+destination: str = Input("destination", default="archive")
 
 try:
     result = {

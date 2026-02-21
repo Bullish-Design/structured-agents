@@ -3,7 +3,7 @@
 try:
     entries = ['README.md', 'src', 'agents', 'tests']
     hidden_entries = ['.gitignore', '.env.example']
-    result = {'entries': hidden_entries + entries if show_all else entries, 'show_hidden': bool(show_all)}
+    result = {'entries': hidden_entries + entries if a else entries, 'show_hidden': bool(a)}
 except Exception as exc:
     result = {'error': str(exc)}
 result

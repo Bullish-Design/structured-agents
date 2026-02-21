@@ -62,31 +62,38 @@ async def run_demo() -> None:
         "You are a model that can do function calling with the following functions."
     )
 
-    messages = [
-        Message(role="developer", content=developer_prompt),
-        Message(
-            role="user",
-            content="Show me what files are in my current directory please.",
-        ),
+    user_prompts = [
+        "Show me what files are in my current directory please.",
+        "What directory am I in right now?",
+        "Create a folder called reports.",
+        "Show me the last 5 lines of error_log.txt.",
+        "Search for files with draft in the name.",
     ]
 
-    try:
+    async def run_call(prompt: str) -> dict[str, object]:
+        messages = [
+            Message(role="developer", content=developer_prompt),
+            Message(role="user", content=prompt),
+        ]
         step_result = await kernel.step(messages=messages, tools=tools, context={})
         if not step_result.tool_calls:
-            print("No tool call returned by the model.")
-            return
-
+            return {
+                "prompt": prompt,
+                "error": "No tool call returned by the model.",
+            }
         tool_call = step_result.tool_calls[0]
         tool_result = step_result.tool_results[0]
+        return {
+            "prompt": prompt,
+            "tool_call": {"name": tool_call.name, "arguments": tool_call.arguments},
+            "tool_result": tool_result.output,
+        }
 
-        print("Tool call:")
-        print(
-            json.dumps(
-                {"name": tool_call.name, "arguments": tool_call.arguments}, indent=2
-            )
-        )
-        print("\nTool result:")
-        print(json.dumps(tool_result.output, indent=2))
+    try:
+        results = await asyncio.gather(*(run_call(prompt) for prompt in user_prompts))
+        for result in results:
+            print("\n=== Demo Result ===")
+            print(json.dumps(result, indent=2))
     finally:
         await kernel.close()
         backend.shutdown()
