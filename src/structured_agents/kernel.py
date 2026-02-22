@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Sequence, cast
 
-from structured_agents.client.openai_compat import OpenAICompatibleClient
+from structured_agents.client.factory import build_client
 from structured_agents.client.protocol import LLMClient
 from structured_agents.exceptions import KernelError
 from structured_agents.grammar.config import GrammarConfig
@@ -71,7 +72,7 @@ class AgentKernel:
     def __post_init__(self) -> None:
         if self.tool_source is None:
             raise KernelError("Tool source is required for kernel execution.")
-        self._client = self.client or OpenAICompatibleClient(self.config)
+        self._client = self.client or build_client(self.config)
         self._validate_grammar_config()
 
     def _validate_grammar_config(self) -> None:
@@ -179,54 +180,105 @@ class AgentKernel:
             tool_calls=tool_calls if tool_calls else None,
         )
 
-        tool_results: list[ToolResult] = []
-        for tool_call in tool_calls:
+        tool_results: list[ToolResult | None] = [None] * len(tool_calls)
+        tool_result_events: list[ToolResultEvent | None] = [None] * len(tool_calls)
+        execution_plan: list[tuple[int, ToolCall, ToolSchema]] = []
+
+        for index, tool_call in enumerate(tool_calls):
             tool_schema = next(
                 (tool for tool in resolved_tools if tool.name == tool_call.name),
                 None,
             )
 
             if not tool_schema:
-                result = ToolResult(
+                tool_results[index] = ToolResult(
                     call_id=tool_call.id,
                     name=tool_call.name,
                     output=f"Unknown tool: {tool_call.name}",
                     is_error=True,
                 )
-            else:
-                await self.observer.on_tool_call(
-                    ToolCallEvent(
-                        turn=turn,
-                        tool_name=tool_call.name,
-                        call_id=tool_call.id,
-                        arguments=tool_call.arguments,
-                    )
+                continue
+
+            await self.observer.on_tool_call(
+                ToolCallEvent(
+                    turn=turn,
+                    tool_name=tool_call.name,
+                    call_id=tool_call.id,
+                    arguments=tool_call.arguments,
+                )
+            )
+            execution_plan.append((index, tool_call, tool_schema))
+
+        async def execute_tool(
+            tool_call: ToolCall, tool_schema: ToolSchema
+        ) -> tuple[ToolResult, int, str]:
+            tool_start = time.monotonic()
+            result = await self.tool_source.execute(tool_call, tool_schema, context)
+            tool_duration_ms = int((time.monotonic() - tool_start) * 1000)
+            output_preview = (
+                str(result.output)[:200] if result.output is not None else ""
+            )
+            return result, tool_duration_ms, output_preview
+
+        strategy = self.config.tool_execution_strategy
+        if (
+            strategy.mode == "sequential"
+            or strategy.max_concurrency <= 1
+            or len(execution_plan) <= 1
+        ):
+            for index, tool_call, tool_schema in execution_plan:
+                result, tool_duration_ms, output_preview = await execute_tool(
+                    tool_call, tool_schema
+                )
+                tool_results[index] = result
+                tool_result_events[index] = ToolResultEvent(
+                    turn=turn,
+                    tool_name=tool_call.name,
+                    call_id=tool_call.id,
+                    is_error=result.is_error,
+                    duration_ms=tool_duration_ms,
+                    output_preview=output_preview,
+                )
+        else:
+            semaphore = asyncio.Semaphore(strategy.max_concurrency)
+
+            async def execute_with_semaphore(
+                tool_call: ToolCall, tool_schema: ToolSchema
+            ) -> tuple[ToolResult, int, str]:
+                async with semaphore:
+                    return await execute_tool(tool_call, tool_schema)
+
+            tasks = [
+                asyncio.create_task(execute_with_semaphore(tool_call, tool_schema))
+                for _, tool_call, tool_schema in execution_plan
+            ]
+            task_results = await asyncio.gather(*tasks)
+
+            for (index, tool_call, _), (
+                result,
+                tool_duration_ms,
+                output_preview,
+            ) in zip(execution_plan, task_results):
+                tool_results[index] = result
+                tool_result_events[index] = ToolResultEvent(
+                    turn=turn,
+                    tool_name=tool_call.name,
+                    call_id=tool_call.id,
+                    is_error=result.is_error,
+                    duration_ms=tool_duration_ms,
+                    output_preview=output_preview,
                 )
 
-                tool_start = time.monotonic()
-                result = await self.tool_source.execute(tool_call, tool_schema, context)
-                tool_duration_ms = int((time.monotonic() - tool_start) * 1000)
+        for event in tool_result_events:
+            if event is not None:
+                await self.observer.on_tool_result(event)
 
-                output_preview = (
-                    str(result.output)[:200] if result.output is not None else ""
-                )
-                await self.observer.on_tool_result(
-                    ToolResultEvent(
-                        turn=turn,
-                        tool_name=tool_call.name,
-                        call_id=tool_call.id,
-                        is_error=result.is_error,
-                        duration_ms=tool_duration_ms,
-                        output_preview=output_preview,
-                    )
-                )
-
-            tool_results.append(result)
+        ordered_results = [result for result in tool_results if result is not None]
 
         return StepResult(
             response_message=response_message,
             tool_calls=tool_calls,
-            tool_results=tool_results,
+            tool_results=ordered_results,
             usage=response.usage,
         )
 

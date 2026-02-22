@@ -6,17 +6,17 @@ from pathlib import Path
 from typing import Any
 
 from structured_agents import (
-    AgentKernel,
+    ContextProvider,
     FunctionGemmaPlugin,
     GrailBackend,
     GrailBackendConfig,
-    ContextProvider,
     KernelConfig,
     Message,
     ToolBackend,
     ToolCall,
     ToolResult,
     ToolSchema,
+    build_client,
 )
 from structured_agents.grammar.config import GrammarConfig
 
@@ -161,11 +161,9 @@ async def run_demo(
     backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd() / "agents"))
     backend_to_use = DefaultingBackend(backend) if use_defaults else backend
     tool_source = ListToolSource(tools, backend_to_use)
-    kernel = AgentKernel(
-        config=config,
-        plugin=FunctionGemmaPlugin(),
-        tool_source=tool_source,
-    )
+    plugin = FunctionGemmaPlugin()
+    grammar_config = GrammarConfig()
+    client = build_client(config)
 
     developer_prompt = (
         "You are a model that can do function calling with the following functions."
@@ -176,33 +174,31 @@ async def run_demo(
             Message(role="developer", content=developer_prompt),
             Message(role="user", content=prompt),
         ]
-        formatted_messages = kernel.plugin.format_messages(messages, tools)
-        formatted_tools = kernel.plugin.format_tools(tools) if tools else None
-        grammar = (
-            kernel.plugin.build_grammar(tools, kernel.grammar_config) if tools else None
-        )
-        extra_body = kernel.plugin.to_extra_body(grammar)
-        tool_choice = kernel.config.tool_choice if tools else "none"
+        formatted_messages = plugin.format_messages(messages, tools)
+        formatted_tools = plugin.format_tools(tools) if tools else None
+        grammar = plugin.build_grammar(tools, grammar_config) if tools else None
+        extra_body = plugin.to_extra_body(grammar)
+        tool_choice = config.tool_choice if tools else "none"
 
         if log_requests:
             payload = {
-                "model": kernel.config.model,
+                "model": config.model,
                 "messages": formatted_messages,
                 "tools": formatted_tools,
                 "tool_choice": tool_choice,
-                "temperature": kernel.config.temperature,
-                "max_tokens": kernel.config.max_tokens,
+                "temperature": config.temperature,
+                "max_tokens": config.max_tokens,
                 "extra_body": extra_body,
             }
             print("\n--- Model Request ---")
             print(json.dumps({"prompt": prompt, "payload": payload}, indent=2))
 
-        response = await kernel._client.chat_completion(
+        response = await client.chat_completion(
             messages=formatted_messages,
             tools=formatted_tools,
             tool_choice=tool_choice,
-            max_tokens=kernel.config.max_tokens,
-            temperature=kernel.config.temperature,
+            max_tokens=config.max_tokens,
+            temperature=config.temperature,
             extra_body=extra_body,
         )
 
@@ -212,7 +208,7 @@ async def run_demo(
                 json.dumps({"prompt": prompt, "raw": response.raw_response}, indent=2)
             )
 
-        content, tool_calls = kernel.plugin.parse_response(
+        content, tool_calls = plugin.parse_response(
             response.content, response.tool_calls
         )
         if not tool_calls:
@@ -234,7 +230,7 @@ async def run_demo(
                 is_error=True,
             )
         else:
-            tool_result = await backend_to_use.execute(tool_call, tool_schema, {})
+            tool_result = await tool_source.execute(tool_call, tool_schema, {})
 
         return {
             "prompt": prompt,
@@ -249,7 +245,7 @@ async def run_demo(
             print("\n=== Demo Result ===")
             print(json.dumps(result, indent=2))
     finally:
-        await kernel.close()
+        await client.close()
         if isinstance(backend_to_use, DefaultingBackend):
             backend_to_use.shutdown()
         else:

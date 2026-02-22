@@ -29,6 +29,7 @@ def test_core_classes_importable() -> None:
         ToolResult,
         ToolSchema,
         ToolSource,
+        build_client,
         load_bundle,
     )
 
@@ -42,4 +43,5 @@ def test_core_classes_importable() -> None:
     assert RegistryBackendToolSource.__name__ == "RegistryBackendToolSource"
     assert ToolSource.__name__ == "ToolSource"
     assert Message.__name__ == "Message"
+    assert build_client.__name__ == "build_client"
     assert load_bundle.__name__ == "load_bundle"

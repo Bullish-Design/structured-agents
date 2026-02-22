@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -9,16 +11,88 @@ import pytest
 from structured_agents.backends import PythonBackend
 from structured_agents.client.protocol import CompletionResponse
 from structured_agents.kernel import AgentKernel
+from structured_agents.observer import ToolCallEvent, ToolResultEvent
 from structured_agents.plugins import FunctionGemmaPlugin
 from structured_agents.registries.python import PythonRegistry
-from structured_agents.tool_sources import RegistryBackendToolSource
+from structured_agents.tool_sources import ContextProvider, RegistryBackendToolSource
 from structured_agents.types import (
     KernelConfig,
     Message,
     TokenUsage,
+    ToolCall,
+    ToolExecutionStrategy,
     ToolResult,
     ToolSchema,
 )
+
+
+class RecordingObserver:
+    def __init__(self) -> None:
+        self.tool_calls: list[ToolCallEvent] = []
+        self.tool_results: list[ToolResultEvent] = []
+
+    async def on_kernel_start(self, *_: object, **__: object) -> None:
+        return None
+
+    async def on_model_request(self, *_: object, **__: object) -> None:
+        return None
+
+    async def on_model_response(self, *_: object, **__: object) -> None:
+        return None
+
+    async def on_tool_call(self, event: ToolCallEvent) -> None:
+        self.tool_calls.append(event)
+
+    async def on_tool_result(self, event: ToolResultEvent) -> None:
+        self.tool_results.append(event)
+
+    async def on_turn_complete(self, *_: object, **__: object) -> None:
+        return None
+
+    async def on_kernel_end(self, *_: object, **__: object) -> None:
+        return None
+
+    async def on_error(self, *_: object, **__: object) -> None:
+        return None
+
+
+class TrackingToolSource:
+    def __init__(self, tools: list[ToolSchema], delays: dict[str, float]) -> None:
+        self._tools = {tool.name: tool for tool in tools}
+        self._delays = delays
+        self._lock = asyncio.Lock()
+        self._in_flight = 0
+        self.max_in_flight = 0
+
+    def list_tools(self) -> list[str]:
+        return list(self._tools.keys())
+
+    def resolve(self, tool_name: str) -> ToolSchema | None:
+        return self._tools.get(tool_name)
+
+    def resolve_all(self, tool_names: list[str]) -> list[ToolSchema]:
+        return [self._tools[name] for name in tool_names if name in self._tools]
+
+    async def execute(
+        self, tool_call: ToolCall, tool_schema: ToolSchema, context: dict[str, Any]
+    ) -> ToolResult:
+        async with self._lock:
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+
+        await asyncio.sleep(self._delays.get(tool_call.name, 0.0))
+
+        async with self._lock:
+            self._in_flight -= 1
+
+        return ToolResult(
+            call_id=tool_call.id,
+            name=tool_call.name,
+            output=f"{tool_call.name} done",
+        )
+
+    def context_providers(self) -> list[ContextProvider]:
+        return []
 
 
 class TestAgentKernel:
@@ -129,6 +203,152 @@ class TestAgentKernel:
         assert result.tool_calls[0].name == "echo"
         assert len(result.tool_results) == 1
         assert "Echo: test" in str(result.tool_results[0].output)
+
+    @pytest.mark.asyncio
+    async def test_concurrent_tool_execution_orders_events_and_limits(
+        self, plugin: FunctionGemmaPlugin
+    ) -> None:
+        tool_schemas = [
+            ToolSchema(
+                name="first",
+                description="First tool",
+                parameters={"type": "object", "properties": {}},
+            ),
+            ToolSchema(
+                name="second",
+                description="Second tool",
+                parameters={"type": "object", "properties": {}},
+            ),
+            ToolSchema(
+                name="third",
+                description="Third tool",
+                parameters={"type": "object", "properties": {}},
+            ),
+        ]
+        tool_source = TrackingToolSource(
+            tool_schemas, delays={"first": 0.05, "second": 0.0, "third": 0.01}
+        )
+        observer = RecordingObserver()
+        config = KernelConfig(
+            base_url="http://localhost:8000/v1",
+            model="test-model",
+            tool_execution_strategy=ToolExecutionStrategy(
+                mode="concurrent", max_concurrency=2
+            ),
+        )
+        kernel = AgentKernel(
+            config=config,
+            plugin=plugin,
+            tool_source=tool_source,
+            observer=observer,
+        )
+
+        mock_response = CompletionResponse(
+            content=None,
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "function": {"name": "first", "arguments": "{}"},
+                },
+                {
+                    "id": "call_2",
+                    "function": {"name": "second", "arguments": "{}"},
+                },
+                {
+                    "id": "call_3",
+                    "function": {"name": "third", "arguments": "{}"},
+                },
+            ],
+            usage=TokenUsage(10, 5, 15),
+            finish_reason="tool_calls",
+            raw_response={},
+        )
+        kernel._client.chat_completion = AsyncMock(return_value=mock_response)
+
+        messages = [Message(role="user", content="Run tools")]
+        result = await kernel.step(messages, tool_schemas)
+
+        assert tool_source.max_in_flight == 2
+        assert [event.tool_name for event in observer.tool_calls] == [
+            "first",
+            "second",
+            "third",
+        ]
+        assert [event.tool_name for event in observer.tool_results] == [
+            "first",
+            "second",
+            "third",
+        ]
+        assert [result.name for result in result.tool_results] == [
+            "first",
+            "second",
+            "third",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_sequential_tool_execution_respects_strategy(
+        self, plugin: FunctionGemmaPlugin
+    ) -> None:
+        tool_schemas = [
+            ToolSchema(
+                name="alpha",
+                description="Alpha tool",
+                parameters={"type": "object", "properties": {}},
+            ),
+            ToolSchema(
+                name="beta",
+                description="Beta tool",
+                parameters={"type": "object", "properties": {}},
+            ),
+        ]
+        tool_source = TrackingToolSource(
+            tool_schemas, delays={"alpha": 0.01, "beta": 0.0}
+        )
+        observer = RecordingObserver()
+        config = KernelConfig(
+            base_url="http://localhost:8000/v1",
+            model="test-model",
+            tool_execution_strategy=ToolExecutionStrategy(
+                mode="sequential", max_concurrency=10
+            ),
+        )
+        kernel = AgentKernel(
+            config=config,
+            plugin=plugin,
+            tool_source=tool_source,
+            observer=observer,
+        )
+
+        mock_response = CompletionResponse(
+            content=None,
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "function": {"name": "alpha", "arguments": "{}"},
+                },
+                {
+                    "id": "call_2",
+                    "function": {"name": "beta", "arguments": "{}"},
+                },
+            ],
+            usage=TokenUsage(10, 5, 15),
+            finish_reason="tool_calls",
+            raw_response={},
+        )
+        kernel._client.chat_completion = AsyncMock(return_value=mock_response)
+
+        messages = [Message(role="user", content="Run tools")]
+        result = await kernel.step(messages, tool_schemas)
+
+        assert tool_source.max_in_flight == 1
+        assert [event.tool_name for event in observer.tool_results] == [
+            "alpha",
+            "beta",
+        ]
+        assert [result.name for result in result.tool_results] == [
+            "alpha",
+            "beta",
+        ]
 
     @pytest.mark.asyncio
     async def test_run_terminates_on_no_tool_calls(

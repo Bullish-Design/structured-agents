@@ -37,5 +37,5 @@ def test_schema_builder_emits_schema_rules() -> None:
     assert "summarize" in grammar.grammar
     assert '\\"text\\"' in grammar.grammar
     assert '\\"mode\\"' in grammar.grammar
-    assert '\\"fast\\"' in grammar.grammar
+    assert '"fast"' in grammar.grammar
     assert '"["' in grammar.grammar

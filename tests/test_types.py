@@ -8,6 +8,7 @@ from structured_agents.types import (
     KernelConfig,
     Message,
     ToolCall,
+    ToolExecutionStrategy,
     ToolResult,
     ToolSchema,
 )
@@ -20,6 +21,8 @@ class TestKernelConfig:
         assert config.timeout == 120.0
         assert config.temperature == 0.1
         assert config.tool_choice == "auto"
+        assert config.tool_execution_strategy.mode == "concurrent"
+        assert config.tool_execution_strategy.max_concurrency == 10
 
     def test_custom_values(self) -> None:
         config = KernelConfig(
@@ -27,9 +30,14 @@ class TestKernelConfig:
             model="custom-model",
             temperature=0.7,
             max_tokens=2048,
+            tool_execution_strategy=ToolExecutionStrategy(
+                mode="sequential", max_concurrency=2
+            ),
         )
         assert config.temperature == 0.7
         assert config.max_tokens == 2048
+        assert config.tool_execution_strategy.mode == "sequential"
+        assert config.tool_execution_strategy.max_concurrency == 2
 
 
 class TestMessage:

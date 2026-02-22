@@ -27,22 +27,34 @@ Read `ARCHITECTURE.md` first to understand how components fit together. This gui
 The `AgentKernel` owns the turn-by-turn loop. It does not manage workspace state or orchestration. Key responsibilities:
 
 - Prepare model input via `ModelPlugin`.
-- Make API calls via `OpenAICompatibleClient`.
-- Parse tool calls and execute them via `ToolBackend`.
+- Make API calls via `OpenAICompatibleClient` (constructed by `build_client`).
+- Parse tool calls and execute them via `ToolSource`.
 - Trim history using `HistoryStrategy`.
 - Emit observer events at each stage.
+- Execute tools concurrently based on `ToolExecutionStrategy`.
 
 ### Model Plugins
 
-Plugins define how messages, tools, and grammar are formatted. They also parse raw responses back into `ToolCall` objects. Any new model integration should be added as a plugin and tested in isolation.
+Plugins are composed from protocol-defined components:
 
-### Tool Backends
+- `MessageFormatter`
+- `ToolFormatter`
+- `ResponseParser`
+- `GrammarProvider`
 
-Backends execute tool calls. `GrailBackend` is the default production implementation. `PythonBackend` exists for tests and simple local tooling.
+`ComposedModelPlugin` wires these together and derives capability flags from the grammar provider.
+
+### Tool Sources
+
+`ToolSource` unifies tool discovery and execution. The default bridge (`RegistryBackendToolSource`) ties a registry and backend together.
+
+### Tool Backends and Registries
+
+Backends execute tool calls. `GrailBackend` is the default production implementation. `PythonBackend` exists for tests and simple local tooling. Registries provide tool schemas (`GrailRegistry`, `PythonRegistry`).
 
 ### Bundles
 
-Bundles provide a deployable configuration format. The loader converts bundle definitions into `ToolSchema` objects and uses Jinja2 templates for prompt rendering.
+Bundles provide a deployable configuration format. The loader converts bundle definitions into `ToolSchema` objects, builds registries, and uses Jinja2 templates for prompt rendering.
 
 ### Observers
 
@@ -70,28 +82,34 @@ Modules should use `logging.getLogger(__name__)` and avoid `print()`. Observers 
 
 ### Grammar Constraints
 
-Only plugins may generate grammar via `build_grammar` and `extra_body`. This ensures model-specific grammar logic remains isolated.
+Only grammar providers may generate constraints via `build_grammar` and `to_extra_body`. This keeps model-specific grammar logic isolated.
 
 ## Testing Strategy
 
-- **Unit tests**: cover core types, plugins, backends, and bundle loading.
+- **Unit tests**: cover core types, plugins, backends, tool sources, and bundle loading.
 - **Integration tests**: exercise a full agent loop with mocked model outputs.
+- **Concurrency tests**: validate ordering and semaphore limits.
 - Prefer deterministic behavior and avoid network calls.
 - Use `PythonBackend` in tests unless `.pym` execution is required.
 
 ## Adding a New Plugin
 
-1. Implement the `ModelPlugin` protocol.
-2. Add a grammar builder if needed.
-3. Add tests for parsing and formatting.
-4. Export it in `structured_agents/plugins/__init__.py`.
+1. Implement `MessageFormatter`, `ToolFormatter`, `ResponseParser`, and `GrammarProvider` components.
+2. Compose them using `ComposedModelPlugin`.
+3. Add tests for component behavior and plugin capabilities.
+4. Export the plugin in `structured_agents/plugins/__init__.py`.
+
+## Adding a New Tool Source
+
+1. Implement the `ToolSource` protocol.
+2. Add tests covering tool resolution and execution.
+3. Export it in `structured_agents/tool_sources/__init__.py` if public.
 
 ## Adding a New Backend
 
 1. Implement the `ToolBackend` protocol.
-2. Provide a `Snapshot` strategy if supported.
-3. Add tests for execution and error handling.
-4. Export it in `structured_agents/backends/__init__.py`.
+2. Add tests for execution and error handling.
+3. Export it in `structured_agents/backends/__init__.py`.
 
 ## Adding a New Bundle Field
 
@@ -108,5 +126,4 @@ Only plugins may generate grammar via `build_grammar` and `extra_body`. This ens
 ## Helpful References
 
 - `ARCHITECTURE.md` for system overview.
-- `STRUCTURED_AGENTS_DEV_GUIDE.md` for original build plan.
 - `tests/` for usage examples.

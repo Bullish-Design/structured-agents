@@ -69,11 +69,11 @@ class ModelPlugin(Protocol):
 
     def build_grammar(
         self, tools: list[ToolSchema], config: GrammarConfig
-    ) -> GrammarArtifact:
+    ) -> GrammarArtifact | None:
         """Build grammar artifact for the given tools and config."""
         ...
 
-    def to_extra_body(self, artifact: GrammarArtifact) -> dict[str, Any] | None:
+    def to_extra_body(self, artifact: GrammarArtifact | None) -> dict[str, Any] | None:
         """Convert grammar artifact to vLLM extra_body payload."""
         ...
 

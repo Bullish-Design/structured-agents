@@ -18,7 +18,7 @@ from structured_agents.types import KernelConfig, Message, TokenUsage, ToolSchem
 
 class RecordingPlugin:
     name = "recording"
-    supports_ebnf = False
+    supports_ebnf = True
     supports_structural_tags = False
     supports_json_schema = False
 

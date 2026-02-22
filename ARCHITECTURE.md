@@ -6,10 +6,10 @@ This document describes the internal architecture of `structured-agents` and how
 
 `structured-agents` provides a core agent loop that repeatedly:
 
-1. Formats messages/tools for a model.
+1. Formats messages/tools for a model via a composed plugin.
 2. Sends a chat completion request to an OpenAI-compatible API.
 3. Parses tool calls from the model response.
-4. Executes tools via a backend.
+4. Executes tools through a `ToolSource` (registry + backend).
 5. Updates history and emits observer events.
 
 The system is intentionally modular. Each subsystem is replaceable and focused.
@@ -20,45 +20,50 @@ The system is intentionally modular. Each subsystem is replaceable and focused.
 
 - Orchestrates the agent loop.
 - Manages history trimming via a `HistoryStrategy`.
-- Delegates model formatting/parsing to a `ModelPlugin`.
-- Delegates tool execution to a `ToolBackend`.
+- Delegates formatting/parsing to a `ModelPlugin`.
+- Executes tools via a `ToolSource`.
+- Honors `ToolExecutionStrategy` for parallel tool execution.
 - Emits observer events for visibility and diagnostics.
 
 ### Model Plugins (`structured_agents.plugins`)
 
-- Normalize model-specific message formats.
-- Build optional XGrammar EBNF constraints for structured output.
-- Parse raw responses into `ToolCall` objects.
+Plugins are composed from component protocols:
+
+- `MessageFormatter`
+- `ToolFormatter`
+- `ResponseParser`
+- `GrammarProvider`
+
+`ComposedModelPlugin` wires these together and exposes capability flags based on the grammar provider.
 
 Key classes:
 
 - `ModelPlugin` protocol
+- `ComposedModelPlugin`
 - `FunctionGemmaPlugin`
-- `QwenPlugin`
+- `QwenPlugin` (example implementation)
 
-### Tool Backends (`structured_agents.backends`)
+### Tool Sources (`structured_agents.tool_sources`)
 
-- Provide execution strategies for tool calls.
-- `GrailBackend` runs `.pym` scripts in isolated processes.
-- `PythonBackend` executes Python async callables directly (useful for tests).
+- Unifies tool discovery and execution.
+- `RegistryBackendToolSource` bridges `ToolRegistry` and `ToolBackend`.
 
-Key classes:
+### Tool Backends and Registries
 
-- `ToolBackend` protocol
-- `GrailBackend`, `GrailBackendConfig`
-- `PythonBackend`
+- Backends execute tool calls (`PythonBackend`, `GrailBackend`).
+- Registries provide tool schemas (`PythonRegistry`, `GrailRegistry`).
 
 ### Bundles (`structured_agents.bundles`)
 
 Bundles represent a deployable agent configuration:
 
-- `bundle.yaml` contains tool definitions, prompts, and model configuration.
-- `AgentBundle` loads the manifest and exposes tool schemas and prompt templates.
+- `bundle.yaml` contains tool references, prompts, and model configuration.
+- `AgentBundle` loads the manifest, exposes tool schemas, and builds a `ToolSource`.
 
 ### Client (`structured_agents.client`)
 
 - `OpenAICompatibleClient` wraps the OpenAI/vLLM API surface.
-- `LLMClient` protocol allows replacement with other clients if needed.
+- `build_client` provides a public factory for client reuse.
 
 ### Observers (`structured_agents.observer`)
 
@@ -72,19 +77,19 @@ Bundles represent a deployable agent configuration:
 Initial Messages + Tool Schemas
         │
         ▼
- Model Plugin → formatted messages/tools
+  Model Plugin → formatted messages/tools
         │
         ▼
- OpenAICompatibleClient → CompletionResponse
+  OpenAICompatibleClient → CompletionResponse
         │
         ▼
- Model Plugin → content + ToolCalls
+  Model Plugin → content + ToolCalls
         │
         ▼
- Tool Backend → ToolResults
+  ToolSource → ToolResults
         │
         ▼
- History + Observer Events → RunResult
+  History + Observer Events → RunResult
 ```
 
 ## Type System and Contracts
@@ -108,14 +113,15 @@ Events are emitted in this order per turn:
 2. `ModelRequestEvent`
 3. `ModelResponseEvent`
 4. `ToolCallEvent` (per tool)
-5. `ToolResultEvent` (per tool)
+5. `ToolResultEvent` (per tool, emitted in deterministic order)
 6. `TurnCompleteEvent`
 7. `KernelEndEvent` (once at run end)
 
 ## Extensibility Points
 
-- Add new model plugins by implementing `ModelPlugin`.
-- Add new tool backends by implementing `ToolBackend`.
+- Add new model plugins by implementing component protocols and composing them.
+- Add new tool sources by implementing `ToolSource`.
+- Add new backends/registries for tool execution and schema discovery.
 - Add new history strategies by implementing `HistoryStrategy`.
 - Add new observers for logging, tracing, or UI integration.
 - Add new client implementations by implementing `LLMClient`.
@@ -124,9 +130,8 @@ Events are emitted in this order per turn:
 
 - `grail`: required for `.pym` execution in `GrailBackend`.
 - `openai`: used by the OpenAI-compatible client.
-- `xgrammar`: optional integration via plugins that emit EBNF grammar.
+- `xgrammar`: required for grammar-constrained decoding.
 
 ## Related Documents
 
 - `DEV_GUIDE.md`: contributor-focused implementation and workflow details.
-- `STRUCTURED_AGENTS_DEV_GUIDE.md`: original build plan used to scaffold the library.

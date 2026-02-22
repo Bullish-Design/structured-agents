@@ -16,6 +16,7 @@ from structured_agents.client import (
     CompletionResponse,
     LLMClient,
     OpenAICompatibleClient,
+    build_client,
 )
 from structured_agents.exceptions import (
     BackendError,
@@ -56,6 +57,7 @@ from structured_agents.types import (
     StepResult,
     TokenUsage,
     ToolCall,
+    ToolExecutionStrategy,
     ToolResult,
     ToolSchema,
 )
@@ -68,6 +70,7 @@ __all__ = [
     "KernelConfig",
     "Message",
     "ToolCall",
+    "ToolExecutionStrategy",
     "ToolResult",
     "ToolSchema",
     "StepResult",
@@ -101,6 +104,7 @@ __all__ = [
     "KeepAllHistory",
     "LLMClient",
     "OpenAICompatibleClient",
+    "build_client",
     "CompletionResponse",
     "StructuredAgentsError",
     "KernelError",

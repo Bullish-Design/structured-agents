@@ -15,6 +15,19 @@ from pydantic import BaseModel, Field
 # =============================================================================
 
 
+class ToolExecutionStrategy(BaseModel):
+    """Tool execution strategy for the kernel."""
+
+    mode: Literal["concurrent", "sequential"] = Field(
+        default="concurrent", description="Execution mode for tool calls"
+    )
+    max_concurrency: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum number of concurrent tool calls",
+    )
+
+
 class KernelConfig(BaseModel):
     """Configuration for the AgentKernel."""
 
@@ -30,6 +43,10 @@ class KernelConfig(BaseModel):
     temperature: float = Field(default=0.1, description="Sampling temperature")
     tool_choice: str = Field(
         default="auto", description="Tool choice strategy: auto, required, none"
+    )
+    tool_execution_strategy: ToolExecutionStrategy = Field(
+        default_factory=ToolExecutionStrategy,
+        description="Execution strategy for tool calls",
     )
 
 

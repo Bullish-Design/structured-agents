@@ -21,7 +21,7 @@ Structured tool orchestration with grammar-constrained LLM outputs. `structured-
 pip install structured-agents
 ```
 
-This package requires the Grail runtime to execute `.pym` scripts. Install dependencies with your project’s normal Python dependency workflow (pip/uv/poetry).
+`structured-agents` expects an OpenAI-compatible API (vLLM, etc.) and the XGrammar runtime for grammar-constrained decoding. Grail is required if you execute `.pym` tools.
 
 ## Quick Start
 
@@ -33,9 +33,11 @@ from structured_agents import (
     FunctionGemmaPlugin,
     KernelConfig,
     Message,
-    PythonBackend,
     ToolSchema,
 )
+from structured_agents.backends import PythonBackend
+from structured_agents.registries import PythonRegistry
+from structured_agents.tool_sources import RegistryBackendToolSource
 
 
 async def main() -> None:
@@ -44,17 +46,19 @@ async def main() -> None:
         model="google/functiongemma-270m-it",
     )
 
-    backend = PythonBackend()
+    registry = PythonRegistry()
+    backend = PythonBackend(registry=registry)
 
     async def greet(name: str) -> str:
         return f"Hello, {name}!"
 
     backend.register("greet", greet)
+    tool_source = RegistryBackendToolSource(registry, backend)
 
     kernel = AgentKernel(
         config=config,
         plugin=FunctionGemmaPlugin(),
-        backend=backend,
+        tool_source=tool_source,
     )
 
     result = await kernel.run(
@@ -81,26 +85,31 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Using Grail `.pym` Tools
+## Tool Sources
 
-`structured-agents` executes `.pym` scripts via `GrailBackend`.
+`AgentKernel` requires a `ToolSource`. The default bridge is `RegistryBackendToolSource`, which combines a tool registry with an execution backend.
 
 ```python
-from pathlib import Path
+from structured_agents.backends import GrailBackend, GrailBackendConfig
+from structured_agents.registries import GrailRegistry, GrailRegistryConfig
+from structured_agents.tool_sources import RegistryBackendToolSource
 
-from structured_agents import GrailBackend, GrailBackendConfig, ToolSchema
+registry = GrailRegistry(GrailRegistryConfig(agents_dir="./agents"))
+backend = GrailBackend(GrailBackendConfig(grail_dir="./agents"))
+source = RegistryBackendToolSource(registry, backend)
+```
 
-backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd() / "agents"))
+## Parallel Tool Execution
 
-schema = ToolSchema(
-    name="read_file",
-    description="Read file contents",
-    parameters={
-        "type": "object",
-        "properties": {"path": {"type": "string"}},
-        "required": ["path"],
-    },
-    script_path=Path("agents/read_file.pym"),
+Tool calls execute concurrently by default. Configure the strategy on `KernelConfig` if you need sequential execution or lower concurrency.
+
+```python
+from structured_agents import KernelConfig, ToolExecutionStrategy
+
+config = KernelConfig(
+    base_url="http://localhost:8000/v1",
+    model="google/functiongemma-270m-it",
+    tool_execution_strategy=ToolExecutionStrategy(mode="sequential", max_concurrency=1),
 )
 ```
 
@@ -108,14 +117,47 @@ schema = ToolSchema(
 
 Bundles package prompts, tool definitions, and model configuration into a directory with a `bundle.yaml`.
 
+```yaml
+name: "docstring_writer"
+model:
+  plugin: "function_gemma"
+  grammar:
+    mode: "json_schema"
+initial_context:
+  system_prompt: "You are a docstring agent."
+  user_template: "{{ input }}"
+tools:
+  - name: "read_file"
+    registry: "grail"
+  - name: "submit_result"
+    registry: "grail"
+registries:
+  - type: "grail"
+    config:
+      agents_dir: "tools"
+```
+
 ```python
 from structured_agents import load_bundle
+from structured_agents.backends import GrailBackend, GrailBackendConfig
 
 bundle = load_bundle("./bundles/docstring_writer")
 plugin = bundle.get_plugin()
 messages = bundle.build_initial_messages({"input": "Add a docstring"})
+backend = GrailBackend(GrailBackendConfig(grail_dir="./tools"))
+source = bundle.build_tool_source(backend)
+```
 
-# Use `bundle.tool_schemas` with AgentKernel
+## Client Reuse
+
+Use the client factory if you want to drive model calls directly while reusing `KernelConfig`.
+
+```python
+from structured_agents import KernelConfig
+from structured_agents.client import build_client
+
+config = KernelConfig(base_url="http://localhost:8000/v1", model="test")
+client = build_client(config)
 ```
 
 ## Observability
@@ -128,18 +170,12 @@ from structured_agents import CompositeObserver, NullObserver
 observer = CompositeObserver([NullObserver()])
 ```
 
-## Common Patterns
-
-- Prefer `PythonBackend` for lightweight unit tests and fast local tooling.
-- Use `GrailBackend` for real tool execution with `.pym` scripts.
-- Keep tool outputs concise to preserve context.
-- Use a termination tool (e.g., `submit_result`) to end long-running loops.
-
 ## API Overview
 
-- `AgentKernel`: core agent loop.
-- `ModelPlugin`: model-specific formatting, parsing, and grammar.
-- `ToolBackend`: tool execution strategy.
+- `AgentKernel`: core agent loop and lifecycle.
+- `ToolSource`: unified tool discovery + execution interface.
+- `ToolExecutionStrategy`: controls sequential vs concurrent tool calls.
+- `ModelPlugin`: composed plugin that formats messages/tools and parses responses.
 - `AgentBundle`: bundle loader and tool schema generator.
 - `Observer`: event hooks for external integrations.
 
