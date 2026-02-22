@@ -37,11 +37,12 @@ class TestBundleLoader:
 name: "bad_bundle"
 initial_context:
   system_prompt: "Test"
-tools:
-  - name: "missing"
-    registry: "unknown"
-registries:
-  - "unknown"
+          tools:
+            - name: "missing"
+              registry: "unknown"
+          registries:
+            - type: "unknown"
+
 """.lstrip()
         )
 
@@ -56,11 +57,12 @@ registries:
 name: "tool_bundle"
 initial_context:
   system_prompt: "Test"
-tools:
-  - name: "missing_tool"
-    registry: "grail"
-registries:
-  - "grail"
+          tools:
+            - name: "missing_tool"
+              registry: "grail"
+          registries:
+            - type: "grail"
+
 """.lstrip()
         )
 

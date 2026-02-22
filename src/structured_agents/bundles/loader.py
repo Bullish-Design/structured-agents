@@ -4,9 +4,14 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import yaml
-from jinja2 import Template
+from jinja2 import Environment, StrictUndefined
 
-from structured_agents.bundles.schema import BundleManifest, ToolReference
+from structured_agents.backends.protocol import ToolBackend
+from structured_agents.bundles.schema import (
+    BundleManifest,
+    RegistrySettings,
+    ToolReference,
+)
 from structured_agents.exceptions import BundleError
 from structured_agents.grammar.config import GrammarConfig
 from structured_agents.plugins import ModelPlugin, get_plugin
@@ -17,6 +22,7 @@ from structured_agents.registries import (
     PythonRegistry,
     ToolRegistry,
 )
+from structured_agents.tool_sources import RegistryBackendToolSource, ToolSource
 from structured_agents.types import Message, ToolSchema
 
 
@@ -27,8 +33,9 @@ class AgentBundle:
         self.path = path
         self.manifest = manifest
         self._tool_schemas: list[ToolSchema] | None = None
-        self._system_template = Template(manifest.initial_context.system_prompt)
-        self._user_template = Template(manifest.initial_context.user_template)
+        env = Environment(undefined=StrictUndefined)
+        self._system_template = env.from_string(manifest.initial_context.system_prompt)
+        self._user_template = env.from_string(manifest.initial_context.user_template)
         self._registries = self._build_registries()
         self._tool_registry = CompositeRegistry(list(self._registries.values()))
 
@@ -70,29 +77,41 @@ class AgentBundle:
             self._tool_schemas = self._build_tool_schemas()
         return self._tool_schemas
 
-    @property
-    def tool_registry(self) -> ToolRegistry:
-        """Get composite tool registry for this bundle."""
-        return self._tool_registry
+    def build_tool_source(self, backend: ToolBackend) -> ToolSource:
+        """Build a ToolSource from bundle registries and a backend."""
+        return RegistryBackendToolSource(self._tool_registry, backend)
 
     def _build_registries(self) -> dict[str, ToolRegistry]:
         registries: dict[str, ToolRegistry] = {}
 
-        for registry_name in self.manifest.registries:
-            name = registry_name.lower()
-            if name == "grail":
+        for registry_settings in self.manifest.registries:
+            registry = self._build_registry(registry_settings)
+            registries[registry_settings.type.lower()] = registry
+
+        return registries
+
+    def _build_registry(self, settings: RegistrySettings) -> ToolRegistry:
+        registry_type = settings.type.lower()
+        config = dict(settings.config)
+
+        if registry_type == "grail":
+            agents_dir_value = config.pop("agents_dir", None)
+            if agents_dir_value:
+                agents_dir = Path(agents_dir_value)
+                if not agents_dir.is_absolute():
+                    agents_dir = self.path / agents_dir
+            else:
                 agents_dir = self.path / "tools"
                 if not agents_dir.exists():
                     agents_dir = Path.cwd() / "agents"
-                registry = GrailRegistry(GrailRegistryConfig(agents_dir=agents_dir))
-            elif name == "python":
-                registry = PythonRegistry()
-            else:
-                raise BundleError(f"Unknown registry: {registry_name}")
 
-            registries[name] = registry
+            grail_config = GrailRegistryConfig(agents_dir=agents_dir, **config)
+            return GrailRegistry(grail_config)
 
-        return registries
+        if registry_type == "python":
+            return PythonRegistry()
+
+        raise BundleError(f"Unknown registry: {settings.type}")
 
     def _build_tool_schemas(self) -> list[ToolSchema]:
         schemas: list[ToolSchema] = []
@@ -139,7 +158,6 @@ class AgentBundle:
             backend=schema.backend,
             script_path=schema.script_path,
             context_providers=context_providers,
-            mcp_server=schema.mcp_server,
         )
 
     def build_initial_messages(

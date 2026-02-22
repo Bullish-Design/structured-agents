@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from structured_agents.backends.protocol import Snapshot, ToolBackend
+from structured_agents.backends.protocol import ToolBackend
 from structured_agents.types import ToolCall, ToolResult, ToolSchema
 
 
@@ -37,7 +38,7 @@ class CompositeBackend:
 
     async def run_context_providers(
         self,
-        providers: list[Any],
+        providers: list[Path],
         context: dict[str, Any],
     ) -> list[str]:
         """Run context providers using Grail backend."""
@@ -45,27 +46,3 @@ class CompositeBackend:
         if grail_backend:
             return await grail_backend.run_context_providers(providers, context)
         return []
-
-    def supports_snapshots(self) -> bool:
-        return all(backend.supports_snapshots() for backend in self._backends.values())
-
-    def create_snapshot(self) -> Snapshot | None:
-        if not self.supports_snapshots():
-            return None
-
-        snapshots = {
-            name: backend.create_snapshot() for name, backend in self._backends.items()
-        }
-        return Snapshot(id="composite", backend_type="composite", state=snapshots)
-
-    def restore_snapshot(self, snapshot: Snapshot) -> None:
-        if snapshot.backend_type != "composite":
-            return
-
-        state = snapshot.state
-        if not isinstance(state, dict):
-            return
-
-        for name, sub_snapshot in state.items():
-            if name in self._backends and isinstance(sub_snapshot, Snapshot):
-                self._backends[name].restore_snapshot(sub_snapshot)

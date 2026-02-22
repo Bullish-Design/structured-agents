@@ -39,7 +39,7 @@ async def test_vllm_grammar_acceptance() -> None:
     ]
 
     grammar_config = GrammarConfig(
-        mode="ebnf", allow_parallel_calls=False, args_format="json"
+        mode="json_schema", allow_parallel_calls=False, args_format="json"
     )
     grammar = plugin.build_grammar(tools, grammar_config)
     extra_body = plugin.to_extra_body(grammar)

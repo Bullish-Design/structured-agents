@@ -9,7 +9,6 @@ from structured_agents.backends import (
     GrailBackend,
     GrailBackendConfig,
     PythonBackend,
-    Snapshot,
     ToolBackend,
 )
 from structured_agents.bundles import AgentBundle, load_bundle
@@ -45,6 +44,11 @@ from structured_agents.observer import (
     TurnCompleteEvent,
 )
 from structured_agents.plugins import FunctionGemmaPlugin, ModelPlugin, QwenPlugin
+from structured_agents.tool_sources import (
+    ContextProvider,
+    RegistryBackendToolSource,
+    ToolSource,
+)
 from structured_agents.types import (
     KernelConfig,
     Message,
@@ -77,7 +81,9 @@ __all__ = [
     "CompositeBackend",
     "GrailBackend",
     "GrailBackendConfig",
-    "Snapshot",
+    "ToolSource",
+    "RegistryBackendToolSource",
+    "ContextProvider",
     "AgentBundle",
     "load_bundle",
     "Observer",

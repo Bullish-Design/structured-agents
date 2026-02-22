@@ -5,6 +5,10 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
+def _default_registries() -> list["RegistrySettings"]:
+    return [RegistrySettings(type="grail")]
+
+
 class ToolReference(BaseModel):
     """Reference to a tool in a registry."""
 
@@ -14,6 +18,13 @@ class ToolReference(BaseModel):
     description: str | None = None
     inputs_override: dict[str, Any] | None = None
     context_providers: list[str] = Field(default_factory=list)
+
+
+class RegistrySettings(BaseModel):
+    """Registry configuration for bundle tool discovery."""
+
+    type: str
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class GrammarSettings(BaseModel):
@@ -52,7 +63,7 @@ class BundleManifest(BaseModel):
     termination_tool: str = "submit_result"
 
     tools: list[ToolReference]
-    registries: list[str] = Field(default_factory=lambda: ["grail"])
+    registries: list[RegistrySettings] = Field(default_factory=_default_registries)
 
     @field_validator("tools")
     @classmethod

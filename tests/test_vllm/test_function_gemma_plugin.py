@@ -7,8 +7,11 @@ import os
 import pytest
 
 from structured_agents.backends import PythonBackend
+from structured_agents.grammar.config import GrammarConfig
 from structured_agents.kernel import AgentKernel
 from structured_agents.plugins import FunctionGemmaPlugin
+from structured_agents.registries.python import PythonRegistry
+from structured_agents.tool_sources import RegistryBackendToolSource
 from structured_agents.types import KernelConfig, Message, ToolSchema
 
 
@@ -19,17 +22,20 @@ async def test_function_gemma_tool_execution() -> None:
     if not base_url or not model:
         pytest.skip("VLLM_BASE_URL and FUNCTION_GEMMA_MODEL are required")
 
-    backend = PythonBackend()
+    registry = PythonRegistry()
+    backend = PythonBackend(registry=registry)
 
     async def echo(text: str = "") -> str:
         return text
 
     backend.register("echo", echo)
 
+    tool_source = RegistryBackendToolSource(registry, backend)
     kernel = AgentKernel(
         config=KernelConfig(base_url=base_url, model=model),
         plugin=FunctionGemmaPlugin(),
-        backend=backend,
+        tool_source=tool_source,
+        grammar_config=GrammarConfig(mode="json_schema", allow_parallel_calls=False),
     )
 
     tools = [

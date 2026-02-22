@@ -17,7 +17,7 @@ class FunctionGemmaGrammarBuilder:
     """Grammar builder for FunctionGemma models."""
 
     def supports_mode(self, mode: str) -> bool:
-        return mode in ("ebnf", "structural_tag", "permissive")
+        return mode in ("ebnf", "structural_tag")
 
     def build(self, tools: list[ToolSchema], config: GrammarConfig) -> GrammarArtifact:
         if not tools:

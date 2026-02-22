@@ -13,6 +13,9 @@ from structured_agents.grammar.artifacts import (
 from structured_agents.grammar.builders.function_gemma import (
     FunctionGemmaGrammarBuilder,
 )
+from structured_agents.grammar.builders.schema_aware_function_gemma import (
+    FunctionGemmaSchemaGrammarBuilder,
+)
 from structured_agents.grammar.config import GrammarConfig
 from structured_agents.types import Message, ToolCall, ToolSchema
 
@@ -25,7 +28,7 @@ class FunctionGemmaPlugin:
     name = "function_gemma"
     supports_ebnf = True
     supports_structural_tags = True
-    supports_json_schema = False
+    supports_json_schema = True
 
     _TOOL_CALL_PATTERN = re.compile(
         r"<start_function_call>call:([a-zA-Z_][a-zA-Z0-9_-]*)\{([^}]*)\}<end_function_call>"
@@ -33,6 +36,7 @@ class FunctionGemmaPlugin:
 
     def __init__(self) -> None:
         self._grammar_builder = FunctionGemmaGrammarBuilder()
+        self._schema_grammar_builder = FunctionGemmaSchemaGrammarBuilder()
 
     def format_messages(
         self,
@@ -50,6 +54,8 @@ class FunctionGemmaPlugin:
         self, tools: list[ToolSchema], config: GrammarConfig
     ) -> GrammarArtifact:
         """Build grammar artifact for FunctionGemma."""
+        if config.mode == "json_schema":
+            return self._schema_grammar_builder.build(tools, config)
         return self._grammar_builder.build(tools, config)
 
     def to_extra_body(self, artifact: GrammarArtifact) -> dict[str, Any] | None:

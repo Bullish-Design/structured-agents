@@ -16,6 +16,8 @@ from structured_agents import (
     ToolSchema,
 )
 from structured_agents.client.protocol import CompletionResponse
+from structured_agents.registries.python import PythonRegistry
+from structured_agents.tool_sources import RegistryBackendToolSource
 from structured_agents.types import TokenUsage
 
 
@@ -54,8 +56,9 @@ class TestFullAgentLoop:
     """Test complete agent workflows."""
 
     @pytest.fixture
-    def backend(self) -> PythonBackend:
-        backend = PythonBackend()
+    def tool_source(self) -> RegistryBackendToolSource:
+        registry = PythonRegistry()
+        backend = PythonBackend(registry=registry)
 
         async def analyze_code(code: str = "") -> dict[str, object]:
             return {
@@ -85,7 +88,7 @@ class TestFullAgentLoop:
         backend.register("analyze_code", analyze_code)
         backend.register("write_docstring", write_docstring)
         backend.register("submit_result", submit_result)
-        return backend
+        return RegistryBackendToolSource(registry, backend)
 
     @pytest.fixture
     def tools(self) -> list[ToolSchema]:
@@ -127,7 +130,7 @@ class TestFullAgentLoop:
     @pytest.mark.asyncio
     async def test_multi_turn_agent_loop(
         self,
-        backend: PythonBackend,
+        tool_source: RegistryBackendToolSource,
         tools: list[ToolSchema],
     ) -> None:
         config = KernelConfig(base_url="http://localhost:8000/v1", model="test")
@@ -137,7 +140,7 @@ class TestFullAgentLoop:
         kernel = AgentKernel(
             config=config,
             plugin=plugin,
-            backend=backend,
+            tool_source=tool_source,
             observer=observer,
         )
 

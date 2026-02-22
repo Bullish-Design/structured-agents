@@ -16,7 +16,7 @@ def test_supports_mode() -> None:
     builder = FunctionGemmaGrammarBuilder()
     assert builder.supports_mode("ebnf") is True
     assert builder.supports_mode("structural_tag") is True
-    assert builder.supports_mode("permissive") is True
+    assert builder.supports_mode("permissive") is False
     assert builder.supports_mode("json_schema") is False
 
 
@@ -55,7 +55,7 @@ def test_build_ebnf_escaped_strings() -> None:
 def test_build_ebnf_escapes_tool_names() -> None:
     builder = FunctionGemmaGrammarBuilder()
     config = GrammarConfig(
-        mode="permissive", allow_parallel_calls=True, args_format="permissive"
+        mode="ebnf", allow_parallel_calls=True, args_format="permissive"
     )
     grammar = builder.build([_tool('tool"quote')], config)
     assert isinstance(grammar, EBNFGrammar)

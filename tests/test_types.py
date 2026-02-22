@@ -77,10 +77,6 @@ class TestToolResult:
         result = ToolResult(call_id="123", name="test", output="hello")
         assert result.output_str == "hello"
 
-    def test_dict_output(self) -> None:
-        result = ToolResult(call_id="123", name="test", output={"key": "value"})
-        assert result.output_str == '{"key": "value"}'
-
     def test_to_message(self) -> None:
         result = ToolResult(call_id="123", name="test", output="output")
         msg = result.to_message()

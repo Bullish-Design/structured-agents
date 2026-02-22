@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from structured_agents.backends.protocol import Snapshot
 from structured_agents.registries.python import PythonRegistry
 from structured_agents.types import ToolCall, ToolResult, ToolSchema
 
@@ -72,10 +72,12 @@ class PythonBackend:
             if inspect.isawaitable(result):
                 result = await result
 
+            output = result if isinstance(result, str) else json.dumps(result)
+
             return ToolResult(
                 call_id=tool_call.id,
                 name=tool_call.name,
-                output=result,
+                output=output,
                 is_error=False,
             )
         except Exception as exc:
@@ -93,12 +95,3 @@ class PythonBackend:
     ) -> list[str]:
         """Python backend doesn't support context providers."""
         return []
-
-    def supports_snapshots(self) -> bool:
-        return False
-
-    def create_snapshot(self) -> Snapshot | None:
-        return None
-
-    def restore_snapshot(self, snapshot: Snapshot) -> None:
-        pass

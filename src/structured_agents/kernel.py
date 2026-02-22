@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Sequence, cast
+from typing import Any, Callable, Sequence, cast
 
-from structured_agents.backends.protocol import ToolBackend
 from structured_agents.client.openai_compat import OpenAICompatibleClient
+from structured_agents.client.protocol import LLMClient
+from structured_agents.exceptions import KernelError
 from structured_agents.grammar.config import GrammarConfig
 from structured_agents.history import HistoryStrategy, SlidingWindowHistory
-from structured_agents.registries.protocol import ToolRegistry
 from structured_agents.observer import (
     KernelEndEvent,
     KernelStartEvent,
@@ -24,6 +24,7 @@ from structured_agents.observer import (
     TurnCompleteEvent,
 )
 from structured_agents.plugins.protocol import ModelPlugin
+from structured_agents.tool_sources import ContextProvider, ToolSource
 from structured_agents.types import (
     KernelConfig,
     Message,
@@ -34,12 +35,10 @@ from structured_agents.types import (
     ToolResult,
     ToolSchema,
 )
-from structured_agents.exceptions import KernelError
 
 logger = logging.getLogger(__name__)
 
 TerminationCondition = Callable[[ToolResult], bool]
-ContextProvider = Callable[[], Awaitable[dict[str, Any]]]
 
 
 @dataclass
@@ -61,16 +60,28 @@ class AgentKernel:
 
     config: KernelConfig
     plugin: ModelPlugin
-    backend: ToolBackend
+    tool_source: ToolSource
     observer: Observer = field(default_factory=NullObserver)
     history_strategy: HistoryStrategy = field(default_factory=SlidingWindowHistory)
     max_history_messages: int = 50
     grammar_config: GrammarConfig = field(default_factory=GrammarConfig)
-    tool_registry: ToolRegistry | None = None
-    _client: OpenAICompatibleClient = field(init=False, repr=False)
+    client: LLMClient | None = None
+    _client: LLMClient = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._client = OpenAICompatibleClient(self.config)
+        if self.tool_source is None:
+            raise KernelError("Tool source is required for kernel execution.")
+        self._client = self.client or OpenAICompatibleClient(self.config)
+        self._validate_grammar_config()
+
+    def _validate_grammar_config(self) -> None:
+        mode = self.grammar_config.mode
+        if mode == "ebnf" and not self.plugin.supports_ebnf:
+            raise KernelError("Plugin does not support EBNF grammar mode.")
+        if mode == "structural_tag" and not self.plugin.supports_structural_tags:
+            raise KernelError("Plugin does not support structural tag mode.")
+        if mode == "json_schema" and not self.plugin.supports_json_schema:
+            raise KernelError("Plugin does not support JSON schema mode.")
 
     def _resolve_tools(
         self, tools: Sequence[ToolSchema] | Sequence[str]
@@ -79,9 +90,19 @@ class AgentKernel:
             return []
         if isinstance(tools[0], ToolSchema):
             return list(cast(Sequence[ToolSchema], tools))
-        if not self.tool_registry:
-            raise KernelError("Tool registry is required to resolve tool names.")
-        return self.tool_registry.resolve_all(list(cast(Sequence[str], tools)))
+        tool_names = list(cast(Sequence[str], tools))
+        return self.tool_source.resolve_all(tool_names)
+
+    async def _build_context(
+        self, context_provider: ContextProvider | None
+    ) -> dict[str, Any]:
+        context: dict[str, Any] = {}
+        if context_provider:
+            context = await context_provider()
+        for provider in self.tool_source.context_providers():
+            provider_context = await provider()
+            context.update(provider_context)
+        return context
 
     async def step(
         self,
@@ -183,7 +204,7 @@ class AgentKernel:
                 )
 
                 tool_start = time.monotonic()
-                result = await self.backend.execute(tool_call, tool_schema, context)
+                result = await self.tool_source.execute(tool_call, tool_schema, context)
                 tool_duration_ms = int((time.monotonic() - tool_start) * 1000)
 
                 output_preview = (
@@ -252,9 +273,7 @@ class AgentKernel:
             while turn_count < max_turns:
                 turn_count += 1
 
-                context: dict[str, Any] = {}
-                if context_provider:
-                    context = await context_provider()
+                context = await self._build_context(context_provider)
 
                 messages = self.history_strategy.trim(
                     messages, self.max_history_messages

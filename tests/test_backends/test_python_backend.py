@@ -22,7 +22,7 @@ class TestPythonBackend:
         result = await backend.execute(tool_call, tool_schema, {})
 
         assert result.is_error is False
-        assert result.output == 5
+        assert result.output == "5"
 
     @pytest.mark.asyncio
     async def test_execute_unregistered_handler(self) -> None:
@@ -72,7 +72,3 @@ class TestPythonBackend:
 
         assert received_kwargs["arg1"] == "value1"
         assert received_kwargs["ctx1"] == "ctx_value"
-
-    def test_supports_snapshots_is_false(self) -> None:
-        backend = PythonBackend()
-        assert backend.supports_snapshots() is False

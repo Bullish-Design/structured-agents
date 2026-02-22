@@ -10,6 +10,8 @@ from structured_agents.backends import PythonBackend
 from structured_agents.client.protocol import CompletionResponse
 from structured_agents.kernel import AgentKernel
 from structured_agents.plugins import FunctionGemmaPlugin
+from structured_agents.registries.python import PythonRegistry
+from structured_agents.tool_sources import RegistryBackendToolSource
 from structured_agents.types import (
     KernelConfig,
     Message,
@@ -32,8 +34,9 @@ class TestAgentKernel:
         return FunctionGemmaPlugin()
 
     @pytest.fixture
-    def backend(self) -> PythonBackend:
-        backend = PythonBackend()
+    def tool_source(self) -> RegistryBackendToolSource:
+        registry = PythonRegistry()
+        backend = PythonBackend(registry=registry)
 
         async def echo_handler(message: str = "") -> str:
             return f"Echo: {message}"
@@ -43,7 +46,7 @@ class TestAgentKernel:
 
         backend.register("echo", echo_handler)
         backend.register("submit_result", submit_handler)
-        return backend
+        return RegistryBackendToolSource(registry, backend)
 
     @pytest.fixture
     def tools(self) -> list[ToolSchema]:
@@ -71,10 +74,10 @@ class TestAgentKernel:
         self,
         config: KernelConfig,
         plugin: FunctionGemmaPlugin,
-        backend: PythonBackend,
+        tool_source: RegistryBackendToolSource,
         tools: list[ToolSchema],
     ) -> None:
-        kernel = AgentKernel(config=config, plugin=plugin, backend=backend)
+        kernel = AgentKernel(config=config, plugin=plugin, tool_source=tool_source)
 
         mock_response = CompletionResponse(
             content="Hello, world!",
@@ -97,10 +100,10 @@ class TestAgentKernel:
         self,
         config: KernelConfig,
         plugin: FunctionGemmaPlugin,
-        backend: PythonBackend,
+        tool_source: RegistryBackendToolSource,
         tools: list[ToolSchema],
     ) -> None:
-        kernel = AgentKernel(config=config, plugin=plugin, backend=backend)
+        kernel = AgentKernel(config=config, plugin=plugin, tool_source=tool_source)
 
         mock_response = CompletionResponse(
             content=None,
@@ -132,10 +135,10 @@ class TestAgentKernel:
         self,
         config: KernelConfig,
         plugin: FunctionGemmaPlugin,
-        backend: PythonBackend,
+        tool_source: RegistryBackendToolSource,
         tools: list[ToolSchema],
     ) -> None:
-        kernel = AgentKernel(config=config, plugin=plugin, backend=backend)
+        kernel = AgentKernel(config=config, plugin=plugin, tool_source=tool_source)
 
         mock_response = CompletionResponse(
             content="Done!",
@@ -157,10 +160,10 @@ class TestAgentKernel:
         self,
         config: KernelConfig,
         plugin: FunctionGemmaPlugin,
-        backend: PythonBackend,
+        tool_source: RegistryBackendToolSource,
         tools: list[ToolSchema],
     ) -> None:
-        kernel = AgentKernel(config=config, plugin=plugin, backend=backend)
+        kernel = AgentKernel(config=config, plugin=plugin, tool_source=tool_source)
 
         call_count = 0
 
@@ -217,10 +220,10 @@ class TestAgentKernel:
         self,
         config: KernelConfig,
         plugin: FunctionGemmaPlugin,
-        backend: PythonBackend,
+        tool_source: RegistryBackendToolSource,
         tools: list[ToolSchema],
     ) -> None:
-        kernel = AgentKernel(config=config, plugin=plugin, backend=backend)
+        kernel = AgentKernel(config=config, plugin=plugin, tool_source=tool_source)
 
         mock_response = CompletionResponse(
             content=None,

@@ -32,7 +32,7 @@ class TestGrailBackend:
             backend.shutdown()
 
         assert result.is_error is False
-        assert result.output == {"sum": 7}
+        assert result.output == '{"sum": 7}'
 
     @pytest.mark.asyncio
     async def test_context_provider_output_is_combined(self) -> None:

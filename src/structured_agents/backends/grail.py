@@ -10,14 +10,12 @@ import asyncio
 import concurrent.futures
 import json
 import logging
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from structured_agents.backends.protocol import Snapshot
-from structured_agents.exceptions import BackendError
 from structured_agents.types import ToolCall, ToolResult, ToolSchema
+
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +43,6 @@ class GrailBackend:
     - Runs .pym scripts in separate processes for isolation
     - Supports context providers for injecting per-tool context
     - Handles Grail limits (memory, duration, recursion)
-    - Optionally supports snapshots for pause/resume
     """
 
     def __init__(
@@ -66,7 +63,6 @@ class GrailBackend:
         self._executor = concurrent.futures.ProcessPoolExecutor(
             max_workers=self._config.max_workers
         )
-        self._snapshots: dict[str, Snapshot] = {}
 
     async def execute(
         self,
@@ -136,7 +132,7 @@ class GrailBackend:
             return ToolResult(
                 call_id=tool_call.id,
                 name=tool_call.name,
-                output=result,
+                output=json.dumps(result),
                 is_error=True,
             )
 
@@ -147,9 +143,11 @@ class GrailBackend:
                 combined += "\n" + tool_output
             else:
                 combined += "\n" + json.dumps(tool_output)
-            output: str | dict[str, Any] = combined
+            output = combined
         else:
-            output = tool_output
+            output = (
+                tool_output if isinstance(tool_output, str) else json.dumps(tool_output)
+            )
 
         return ToolResult(
             call_id=tool_call.id,
@@ -191,23 +189,6 @@ class GrailBackend:
                 logger.warning("Context provider %s failed: %s", provider_path, exc)
 
         return outputs
-
-    def supports_snapshots(self) -> bool:
-        return True
-
-    def create_snapshot(self) -> Snapshot | None:
-        snapshot_id = f"snap_{uuid.uuid4().hex[:8]}"
-        snapshot = Snapshot(
-            id=snapshot_id,
-            backend_type="grail",
-            state={},
-        )
-        self._snapshots[snapshot_id] = snapshot
-        return snapshot
-
-    def restore_snapshot(self, snapshot: Snapshot) -> None:
-        if snapshot.id not in self._snapshots:
-            raise BackendError(f"Unknown snapshot: {snapshot.id}")
 
     def shutdown(self) -> None:
         """Shutdown the process pool."""

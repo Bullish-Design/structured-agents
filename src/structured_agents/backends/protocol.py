@@ -2,20 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from structured_agents.types import ToolCall, ToolResult, ToolSchema
-
-
-@dataclass
-class Snapshot:
-    """Snapshot of backend state for pause/resume functionality."""
-
-    id: str
-    backend_type: str
-    state: dict[str, Any]
 
 
 class ToolBackend(Protocol):
@@ -60,20 +50,4 @@ class ToolBackend(Protocol):
         Returns:
             List of serialized provider outputs.
         """
-        ...
-
-    def supports_snapshots(self) -> bool:
-        """Check if this backend supports pause/resume via snapshots."""
-        ...
-
-    def create_snapshot(self) -> Snapshot | None:
-        """Create a snapshot of current backend state.
-
-        Returns:
-            Snapshot object for pause/resume, or None if not supported.
-        """
-        ...
-
-    def restore_snapshot(self, snapshot: Snapshot) -> None:
-        """Restore backend state from a snapshot."""
         ...

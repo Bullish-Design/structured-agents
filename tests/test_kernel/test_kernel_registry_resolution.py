@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -12,6 +12,7 @@ from structured_agents.client.protocol import CompletionResponse
 from structured_agents.exceptions import KernelError
 from structured_agents.kernel import AgentKernel
 from structured_agents.registries.python import PythonRegistry
+from structured_agents.tool_sources import RegistryBackendToolSource
 from structured_agents.types import KernelConfig, Message, TokenUsage, ToolSchema
 
 
@@ -48,6 +49,7 @@ class RecordingPlugin:
 @pytest.mark.asyncio
 async def test_step_resolves_tools_from_registry() -> None:
     registry = PythonRegistry()
+    backend = PythonBackend(registry=registry)
 
     async def echo(message: str) -> str:
         return message
@@ -55,11 +57,11 @@ async def test_step_resolves_tools_from_registry() -> None:
     registry.register("echo", echo)
 
     plugin = RecordingPlugin()
+    tool_source = RegistryBackendToolSource(registry, backend)
     kernel = AgentKernel(
         config=KernelConfig(base_url="http://localhost:8000/v1", model="test"),
         plugin=plugin,
-        backend=PythonBackend(),
-        tool_registry=registry,
+        tool_source=tool_source,
     )
 
     response = CompletionResponse(
@@ -77,14 +79,11 @@ async def test_step_resolves_tools_from_registry() -> None:
     assert plugin.seen_tools[0].name == "echo"
 
 
-@pytest.mark.asyncio
-async def test_step_requires_registry_for_names() -> None:
+def test_kernel_requires_tool_source() -> None:
     plugin = RecordingPlugin()
-    kernel = AgentKernel(
-        config=KernelConfig(base_url="http://localhost:8000/v1", model="test"),
-        plugin=plugin,
-        backend=PythonBackend(),
-    )
-
     with pytest.raises(KernelError):
-        await kernel.step([Message(role="user", content="hi")], ["echo"])
+        AgentKernel(
+            config=KernelConfig(base_url="http://localhost:8000/v1", model="test"),
+            plugin=plugin,
+            tool_source=cast(RegistryBackendToolSource, None),
+        )

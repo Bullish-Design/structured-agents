@@ -113,23 +113,19 @@ class ToolResult:
 
     call_id: str
     name: str
-    output: str | dict[str, Any]
+    output: str
     is_error: bool = False
 
     @property
     def output_str(self) -> str:
         """Output as string."""
-        if isinstance(self.output, str):
-            return self.output
-        import json
-
-        return json.dumps(self.output)
+        return self.output
 
     def to_message(self) -> Message:
         """Convert to a tool response message."""
         return Message(
             role="tool",
-            content=self.output_str,
+            content=self.output,
             tool_call_id=self.call_id,
             name=self.name,
         )
@@ -150,7 +146,6 @@ class ToolSchema:
     backend: str = "python"
     script_path: Path | None = None
     context_providers: tuple[Path, ...] = ()
-    mcp_server: str | None = None
 
     def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI tools array format."""

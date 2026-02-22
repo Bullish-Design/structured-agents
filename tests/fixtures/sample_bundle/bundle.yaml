@@ -13,4 +13,4 @@ tools:
   - name: "submit_result"
     registry: "grail"
 registries:
-  - "grail"
+  - type: "grail"

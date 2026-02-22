@@ -24,9 +24,11 @@ def test_core_classes_importable() -> None:
         KernelConfig,
         Message,
         PythonBackend,
+        RegistryBackendToolSource,
         ToolCall,
         ToolResult,
         ToolSchema,
+        ToolSource,
         load_bundle,
     )
 
@@ -37,5 +39,7 @@ def test_core_classes_importable() -> None:
     assert ToolSchema.__name__ == "ToolSchema"
     assert FunctionGemmaPlugin.__name__ == "FunctionGemmaPlugin"
     assert PythonBackend.__name__ == "PythonBackend"
+    assert RegistryBackendToolSource.__name__ == "RegistryBackendToolSource"
+    assert ToolSource.__name__ == "ToolSource"
     assert Message.__name__ == "Message"
     assert load_bundle.__name__ == "load_bundle"

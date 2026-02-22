@@ -10,9 +10,10 @@ from structured_agents import (
     FunctionGemmaPlugin,
     GrailBackend,
     GrailBackendConfig,
+    ContextProvider,
     KernelConfig,
     Message,
-    Snapshot,
+    ToolBackend,
     ToolCall,
     ToolResult,
     ToolSchema,
@@ -103,17 +104,31 @@ class DefaultingBackend:
     ) -> list[str]:
         return await self._backend.run_context_providers(providers, context)
 
-    def supports_snapshots(self) -> bool:
-        return self._backend.supports_snapshots()
-
-    def create_snapshot(self) -> Snapshot | None:
-        return self._backend.create_snapshot()
-
-    def restore_snapshot(self, snapshot: Snapshot) -> None:
-        self._backend.restore_snapshot(snapshot)
-
     def shutdown(self) -> None:
         self._backend.shutdown()
+
+
+class ListToolSource:
+    def __init__(self, tools: list[ToolSchema], backend: ToolBackend) -> None:
+        self._tools = {tool.name: tool for tool in tools}
+        self._backend = backend
+
+    def list_tools(self) -> list[str]:
+        return list(self._tools.keys())
+
+    def resolve(self, tool_name: str) -> ToolSchema | None:
+        return self._tools.get(tool_name)
+
+    def resolve_all(self, tool_names: list[str]) -> list[ToolSchema]:
+        return [self._tools[name] for name in tool_names if name in self._tools]
+
+    async def execute(
+        self, tool_call: ToolCall, tool_schema: ToolSchema, context: dict[str, Any]
+    ) -> ToolResult:
+        return await self._backend.execute(tool_call, tool_schema, context)
+
+    def context_providers(self) -> list[ContextProvider]:
+        return []
 
 
 def select_prompts(count: int) -> list[str]:
@@ -145,10 +160,11 @@ async def run_demo(
 
     backend = GrailBackend(GrailBackendConfig(grail_dir=Path.cwd() / "agents"))
     backend_to_use = DefaultingBackend(backend) if use_defaults else backend
+    tool_source = ListToolSource(tools, backend_to_use)
     kernel = AgentKernel(
         config=config,
         plugin=FunctionGemmaPlugin(),
-        backend=backend_to_use,
+        tool_source=tool_source,
     )
 
     developer_prompt = (

@@ -11,6 +11,8 @@ from structured_agents.backends import PythonBackend
 from structured_agents.client.protocol import CompletionResponse
 from structured_agents.grammar.config import GrammarConfig
 from structured_agents.kernel import AgentKernel
+from structured_agents.registries.python import PythonRegistry
+from structured_agents.tool_sources import RegistryBackendToolSource
 from structured_agents.types import KernelConfig, Message, TokenUsage, ToolSchema
 
 
@@ -51,10 +53,14 @@ async def test_kernel_uses_grammar_config() -> None:
         mode="structural_tag", allow_parallel_calls=False, args_format="json"
     )
 
+    registry = PythonRegistry()
+    backend = PythonBackend(registry=registry)
+    tool_source = RegistryBackendToolSource(registry, backend)
+
     kernel = AgentKernel(
         config=KernelConfig(base_url="http://localhost:8000/v1", model="test"),
         plugin=plugin,
-        backend=PythonBackend(),
+        tool_source=tool_source,
         grammar_config=grammar_config,
     )
 
