@@ -376,6 +376,35 @@ class TestAgentKernel:
         assert result.termination_reason == "no_tool_calls"
 
     @pytest.mark.asyncio
+    async def test_run_passes_model_override_from_context(
+        self,
+        config: KernelConfig,
+        plugin: FunctionGemmaPlugin,
+        tool_source: RegistryBackendToolSource,
+        tools: list[ToolSchema],
+    ) -> None:
+        kernel = AgentKernel(config=config, plugin=plugin, tool_source=tool_source)
+
+        mock_response = CompletionResponse(
+            content="Done!",
+            tool_calls=None,
+            usage=TokenUsage(10, 5, 15),
+            finish_reason="stop",
+            raw_response={},
+        )
+        mock_client = AsyncMock(return_value=mock_response)
+        kernel._client.chat_completion = mock_client
+
+        async def provide_context() -> dict[str, Any]:
+            return {"model_override": "adapter-model"}
+
+        messages = [Message(role="user", content="Hi")]
+        await kernel.run(messages, tools, max_turns=1, context_provider=provide_context)
+
+        assert mock_client.await_args is not None
+        assert mock_client.await_args.kwargs["model"] == "adapter-model"
+
+    @pytest.mark.asyncio
     async def test_run_terminates_on_termination_tool(
         self,
         config: KernelConfig,
