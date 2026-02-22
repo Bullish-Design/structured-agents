@@ -1,5 +1,3 @@
-"""FunctionGemma model plugin implementation."""
-
 from __future__ import annotations
 
 import json
@@ -7,30 +5,34 @@ import logging
 import re
 from typing import Any
 
-from structured_agents.plugins.grammar.function_gemma import build_functiongemma_grammar
+from structured_agents.grammar.artifacts import (
+    EBNFGrammar,
+    GrammarArtifact,
+    StructuralTagGrammar,
+)
+from structured_agents.grammar.builders.function_gemma import (
+    FunctionGemmaGrammarBuilder,
+)
+from structured_agents.grammar.config import GrammarConfig
 from structured_agents.types import Message, ToolCall, ToolSchema
 
 logger = logging.getLogger(__name__)
 
 
 class FunctionGemmaPlugin:
-    """Plugin for Google's FunctionGemma models.
-
-    FunctionGemma uses a specific output format:
-        <start_function_call>call:tool_name{arg1:value1}<end_function_call>
-
-    This plugin handles:
-    - Building the appropriate grammar for constrained decoding
-    - Parsing tool calls from the constrained output
-    - Formatting messages in the expected format
-    """
+    """Plugin for Google's FunctionGemma models."""
 
     name = "function_gemma"
+    supports_ebnf = True
+    supports_structural_tags = True
+    supports_json_schema = False
 
     _TOOL_CALL_PATTERN = re.compile(
-        r"<start_function_call>call:(\w+)\{([^}]*)\}<end_function_call>"
+        r"<start_function_call>call:([a-zA-Z_][a-zA-Z0-9_-]*)\{([^}]*)\}<end_function_call>"
     )
-    _ARG_PATTERN = re.compile(r"(\w+):([^,}]+(?:,[^,}]+)*)")
+
+    def __init__(self) -> None:
+        self._grammar_builder = FunctionGemmaGrammarBuilder()
 
     def format_messages(
         self,
@@ -44,25 +46,28 @@ class FunctionGemmaPlugin:
         """Format tools for the API."""
         return [tool.to_openai_format() for tool in tools]
 
-    def build_grammar(self, tools: list[ToolSchema]) -> str | None:
-        """Build EBNF grammar for FunctionGemma format."""
-        if not tools:
+    def build_grammar(
+        self, tools: list[ToolSchema], config: GrammarConfig
+    ) -> GrammarArtifact:
+        """Build grammar artifact for FunctionGemma."""
+        return self._grammar_builder.build(tools, config)
+
+    def to_extra_body(self, artifact: GrammarArtifact) -> dict[str, Any] | None:
+        """Convert grammar artifact to vLLM payload."""
+        if artifact is None:
             return None
-        return build_functiongemma_grammar(tools)
+
+        if isinstance(artifact, (EBNFGrammar, StructuralTagGrammar)):
+            return artifact.to_vllm_payload()
+
+        raise ValueError(f"Unsupported artifact type: {type(artifact)}")
 
     def parse_response(
         self,
         content: str | None,
         tool_calls_raw: list[dict[str, Any]] | None,
     ) -> tuple[str | None, list[ToolCall]]:
-        """Parse FunctionGemma response.
-
-        FunctionGemma can output tool calls in two ways:
-        1. Standard OpenAI format (tool_calls_raw)
-        2. Grammar-constrained format in content
-
-        We check both and prefer standard format if present.
-        """
+        """Parse FunctionGemma response."""
         tool_calls: list[ToolCall] = []
 
         if tool_calls_raw:
@@ -96,41 +101,29 @@ class FunctionGemmaPlugin:
         return content, tool_calls
 
     def _parse_arguments(self, args_str: str) -> dict[str, Any]:
-        """Parse FunctionGemma argument format.
-
-        Format: key1:value1,key2:value2
-        Values may be JSON or plain strings.
-        """
+        """Parse FunctionGemma argument format."""
         args: dict[str, Any] = {}
 
         if not args_str.strip():
             return args
 
         try:
-            if not args_str.strip().startswith("{"):
-                args_str_json = "{" + args_str + "}"
-            else:
-                args_str_json = args_str
-            return json.loads(args_str_json)
+            json_str = (
+                "{" + args_str + "}" if not args_str.startswith("{") else args_str
+            )
+            return json.loads(json_str)
         except json.JSONDecodeError:
             pass
 
-        for match in self._ARG_PATTERN.finditer(args_str):
-            key, value = match.groups()
+        escape_pattern = re.compile(r"(\w+):(?:<escape>([^<]*)<escape>|([^,}]+))")
+
+        for match in escape_pattern.finditer(args_str):
+            key = match.group(1)
+            value = match.group(2) if match.group(2) is not None else match.group(3)
+
             try:
                 args[key] = json.loads(value)
             except json.JSONDecodeError:
                 args[key] = value.strip().strip("\"'")
 
         return args
-
-    def extra_body(self, grammar: str | None) -> dict[str, Any] | None:
-        """Build extra_body for vLLM structured outputs."""
-        if not grammar:
-            return None
-
-        return {
-            "structured_outputs": {
-                "grammar": grammar,
-            }
-        }

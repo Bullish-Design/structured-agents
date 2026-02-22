@@ -1,5 +1,3 @@
-"""Bundle schema definitions."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -7,36 +5,35 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
-class ToolInputSchema(BaseModel):
-    """Schema for a tool input parameter."""
-
-    type: str = "string"
-    description: str = ""
-    required: bool = True
-    default: Any = None
-    enum: list[str] | None = None
-
-
-class ToolDefinition(BaseModel):
-    """Definition of a tool in a bundle."""
+class ToolReference(BaseModel):
+    """Reference to a tool in a registry."""
 
     name: str
-    script: str
-    description: str
-    inputs: dict[str, ToolInputSchema] = Field(default_factory=dict)
+    registry: str = "grail"
+
+    description: str | None = None
+    inputs_override: dict[str, Any] | None = None
     context_providers: list[str] = Field(default_factory=list)
 
 
-class ModelConfig(BaseModel):
+class GrammarSettings(BaseModel):
+    """Grammar configuration for the bundle."""
+
+    mode: str = "ebnf"
+    allow_parallel_calls: bool = True
+    args_format: str = "permissive"
+
+
+class ModelSettings(BaseModel):
     """Model configuration in a bundle."""
 
     plugin: str = "function_gemma"
     adapter: str | None = None
-    grammar_strategy: str = "permissive"
+    grammar: GrammarSettings = Field(default_factory=GrammarSettings)
 
 
 class InitialContext(BaseModel):
-    """Initial context (prompts) in a bundle."""
+    """Initial prompts for the agent."""
 
     system_prompt: str
     user_template: str = "{{ input }}"
@@ -48,17 +45,18 @@ class BundleManifest(BaseModel):
     name: str
     version: str = "1.0"
 
-    model: ModelConfig = Field(default_factory=ModelConfig)
+    model: ModelSettings = Field(default_factory=ModelSettings)
     initial_context: InitialContext
 
     max_turns: int = 20
     termination_tool: str = "submit_result"
 
-    tools: list[ToolDefinition]
+    tools: list[ToolReference]
+    registries: list[str] = Field(default_factory=lambda: ["grail"])
 
     @field_validator("tools")
     @classmethod
-    def validate_tools(cls, tools: list[ToolDefinition]) -> list[ToolDefinition]:
+    def validate_tools(cls, tools: list[ToolReference]) -> list[ToolReference]:
         names = [tool.name for tool in tools]
         if len(names) != len(set(names)):
             raise ValueError("Duplicate tool names in bundle")

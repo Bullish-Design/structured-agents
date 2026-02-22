@@ -13,6 +13,7 @@ dependencies = [
     "grail",
     "fsdantic",
     "xgrammar>=0.1.7",
+    "vllm>=0.15.1",
 ]
 
 [project.optional-dependencies]

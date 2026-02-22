@@ -3,18 +3,18 @@
 from structured_agents.bundles.loader import AgentBundle, load_bundle
 from structured_agents.bundles.schema import (
     BundleManifest,
+    GrammarSettings,
     InitialContext,
-    ModelConfig,
-    ToolDefinition,
-    ToolInputSchema,
+    ModelSettings,
+    ToolReference,
 )
 
 __all__ = [
     "AgentBundle",
-    "load_bundle",
     "BundleManifest",
+    "GrammarSettings",
     "InitialContext",
-    "ModelConfig",
-    "ToolDefinition",
-    "ToolInputSchema",
+    "ModelSettings",
+    "ToolReference",
+    "load_bundle",
 ]

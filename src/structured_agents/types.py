@@ -147,8 +147,10 @@ class ToolSchema:
     name: str
     description: str
     parameters: dict[str, Any]
+    backend: str = "python"
     script_path: Path | None = None
     context_providers: tuple[Path, ...] = ()
+    mcp_server: str | None = None
 
     def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI tools array format."""

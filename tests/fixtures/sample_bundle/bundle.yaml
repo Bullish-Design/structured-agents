@@ -9,18 +9,8 @@ max_turns: 3
 termination_tool: "submit_result"
 tools:
   - name: "echo"
-    script: "tools/echo.pym"
-    description: "Echo input"
-    inputs:
-      message:
-        type: "string"
-        description: "Message to echo"
-        required: true
+    registry: "grail"
   - name: "submit_result"
-    script: "tools/submit_result.pym"
-    description: "Submit results"
-    inputs:
-      summary:
-        type: "string"
-        description: "Summary"
-        required: true
+    registry: "grail"
+registries:
+  - "grail"

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from structured_agents.backends.protocol import Snapshot
+from structured_agents.registries.python import PythonRegistry
 from structured_agents.types import ToolCall, ToolResult, ToolSchema
 
 
@@ -20,15 +22,19 @@ class PythonBackend:
 
     def __init__(
         self,
+        registry: PythonRegistry | None = None,
         handlers: dict[str, Callable[..., Awaitable[Any]]] | None = None,
     ) -> None:
-        """Initialize with optional tool handlers.
+        """Initialize with optional registry and handlers.
 
         Args:
-            handlers: Dict mapping tool names to async handler functions.
-                      Handler signature: async def handler(**kwargs) -> Any
+            registry: Registry providing tool callables.
+            handlers: Optional mapping of tool names to async handlers.
         """
-        self._handlers = handlers or {}
+        self._registry = registry or PythonRegistry()
+        if handlers:
+            for name, handler in handlers.items():
+                self.register(name, handler)
 
     def register(
         self,
@@ -41,7 +47,7 @@ class PythonBackend:
             name: Tool name.
             handler: Async function to handle the tool.
         """
-        self._handlers[name] = handler
+        self._registry.register(name, handler)
 
     async def execute(
         self,
@@ -50,7 +56,7 @@ class PythonBackend:
         context: dict[str, Any],
     ) -> ToolResult:
         """Execute a tool using the registered handler."""
-        handler = self._handlers.get(tool_call.name)
+        handler = self._registry.get_callable(tool_call.name)
 
         if not handler:
             return ToolResult(
@@ -62,7 +68,9 @@ class PythonBackend:
 
         try:
             kwargs = {**context, **tool_call.arguments}
-            result = await handler(**kwargs)
+            result = handler(**kwargs)
+            if inspect.isawaitable(result):
+                result = await result
 
             return ToolResult(
                 call_id=tool_call.id,

@@ -1,24 +1,23 @@
-"""Qwen model plugin implementation."""
-
 from __future__ import annotations
 
 import json
 import logging
 from typing import Any
 
+from structured_agents.grammar.artifacts import GrammarArtifact
+from structured_agents.grammar.config import GrammarConfig
 from structured_agents.types import Message, ToolCall, ToolSchema
 
 logger = logging.getLogger(__name__)
 
 
 class QwenPlugin:
-    """Plugin for Qwen/Qwen2.5 instruction-tuned models.
-
-    Qwen models use standard OpenAI-compatible tool calling format.
-    This plugin demonstrates that the interface works for different models.
-    """
+    """Plugin for Qwen/Qwen2.5 instruction-tuned models."""
 
     name = "qwen"
+    supports_ebnf = False
+    supports_structural_tags = False
+    supports_json_schema = False
 
     def format_messages(
         self,
@@ -32,8 +31,14 @@ class QwenPlugin:
         """Format tools for the API."""
         return [tool.to_openai_format() for tool in tools]
 
-    def build_grammar(self, tools: list[ToolSchema]) -> str | None:
+    def build_grammar(
+        self, tools: list[ToolSchema], config: GrammarConfig
+    ) -> GrammarArtifact:
         """Qwen uses standard tool calling, no grammar needed."""
+        return None
+
+    def to_extra_body(self, artifact: GrammarArtifact) -> dict[str, Any] | None:
+        """Qwen doesn't use grammar constraints."""
         return None
 
     def parse_response(
@@ -65,7 +70,3 @@ class QwenPlugin:
                 )
 
         return content, tool_calls
-
-    def extra_body(self, grammar: str | None) -> dict[str, Any] | None:
-        """Qwen doesn't use grammar constraints."""
-        return None

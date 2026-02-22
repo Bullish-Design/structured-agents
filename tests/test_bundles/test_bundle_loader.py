@@ -10,7 +10,7 @@ from structured_agents.bundles.loader import AgentBundle, load_bundle
 from structured_agents.bundles.schema import (
     BundleManifest,
     InitialContext,
-    ToolDefinition,
+    ToolReference,
 )
 from structured_agents.exceptions import BundleError
 from structured_agents.types import Message, ToolSchema
@@ -29,6 +29,44 @@ class TestBundleLoader:
     def test_load_bundle_missing(self) -> None:
         with pytest.raises(BundleError):
             load_bundle(Path(__file__).parent / "missing")
+
+    def test_unknown_registry_raises(self, tmp_path: Path) -> None:
+        bundle_yaml = tmp_path / "bundle.yaml"
+        bundle_yaml.write_text(
+            """
+name: "bad_bundle"
+initial_context:
+  system_prompt: "Test"
+tools:
+  - name: "missing"
+    registry: "unknown"
+registries:
+  - "unknown"
+""".lstrip()
+        )
+
+        with pytest.raises(BundleError):
+            load_bundle(tmp_path)
+
+    def test_unknown_tool_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "tools").mkdir()
+        bundle_yaml = tmp_path / "bundle.yaml"
+        bundle_yaml.write_text(
+            """
+name: "tool_bundle"
+initial_context:
+  system_prompt: "Test"
+tools:
+  - name: "missing_tool"
+    registry: "grail"
+registries:
+  - "grail"
+""".lstrip()
+        )
+
+        bundle = load_bundle(tmp_path)
+        with pytest.raises(BundleError):
+            _ = bundle.tool_schemas
 
     def test_tool_schemas(self) -> None:
         bundle = load_bundle(FIXTURE_DIR)
@@ -62,7 +100,7 @@ class TestBundleManifest:
                 name="dup",
                 initial_context=InitialContext(system_prompt="Test"),
                 tools=[
-                    ToolDefinition(name="a", script="a.pym", description="A"),
-                    ToolDefinition(name="a", script="b.pym", description="B"),
+                    ToolReference(name="a"),
+                    ToolReference(name="a"),
                 ],
             )

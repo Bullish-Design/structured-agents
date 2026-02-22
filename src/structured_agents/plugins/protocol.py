@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from structured_agents.grammar.artifacts import GrammarArtifact
+from structured_agents.grammar.config import GrammarConfig
 from structured_agents.types import Message, ToolCall, ToolSchema
 
 
@@ -21,6 +23,21 @@ class ModelPlugin(Protocol):
     @property
     def name(self) -> str:
         """Plugin identifier (e.g., 'function_gemma', 'qwen')."""
+        ...
+
+    @property
+    def supports_ebnf(self) -> bool:
+        """Whether this model supports EBNF grammar constraints."""
+        ...
+
+    @property
+    def supports_structural_tags(self) -> bool:
+        """Whether this model supports XGrammar structural tags."""
+        ...
+
+    @property
+    def supports_json_schema(self) -> bool:
+        """Whether this model supports JSON schema constraints."""
         ...
 
     def format_messages(
@@ -50,15 +67,14 @@ class ModelPlugin(Protocol):
         """
         ...
 
-    def build_grammar(self, tools: list[ToolSchema]) -> str | None:
-        """Build XGrammar EBNF for constrained decoding.
+    def build_grammar(
+        self, tools: list[ToolSchema], config: GrammarConfig
+    ) -> GrammarArtifact:
+        """Build grammar artifact for the given tools and config."""
+        ...
 
-        Args:
-            tools: Available tools.
-
-        Returns:
-            EBNF grammar string, or None to disable grammar enforcement.
-        """
+    def to_extra_body(self, artifact: GrammarArtifact) -> dict[str, Any] | None:
+        """Convert grammar artifact to vLLM extra_body payload."""
         ...
 
     def parse_response(
@@ -74,16 +90,5 @@ class ModelPlugin(Protocol):
 
         Returns:
             Tuple of (text_content, list_of_tool_calls).
-        """
-        ...
-
-    def extra_body(self, grammar: str | None) -> dict[str, Any] | None:
-        """Build extra_body for vLLM structured outputs.
-
-        Args:
-            grammar: EBNF grammar string (may be None).
-
-        Returns:
-            Dict to pass as extra_body to the API, or None.
         """
         ...

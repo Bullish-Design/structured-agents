@@ -1,6 +1,11 @@
 """structured-agents: Structured tool orchestration with grammar-constrained LLM outputs."""
 
+from structured_agents.deps import require_xgrammar_and_vllm
+
+require_xgrammar_and_vllm()
+
 from structured_agents.backends import (
+    CompositeBackend,
     GrailBackend,
     GrailBackendConfig,
     PythonBackend,
@@ -69,6 +74,7 @@ __all__ = [
     "QwenPlugin",
     "ToolBackend",
     "PythonBackend",
+    "CompositeBackend",
     "GrailBackend",
     "GrailBackendConfig",
     "Snapshot",

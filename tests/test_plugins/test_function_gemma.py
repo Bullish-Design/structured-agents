@@ -1,32 +1,8 @@
 """Tests for FunctionGemma plugin."""
 
+from structured_agents.grammar.artifacts import EBNFGrammar
 from structured_agents.plugins import FunctionGemmaPlugin
-from structured_agents.plugins.grammar.function_gemma import build_functiongemma_grammar
-from structured_agents.types import Message, ToolSchema
-
-
-class TestFunctionGemmaGrammar:
-    def test_empty_tools_returns_empty(self) -> None:
-        grammar = build_functiongemma_grammar([])
-        assert grammar == ""
-
-    def test_single_tool(self) -> None:
-        tools = [
-            ToolSchema(name="read_file", description="Read a file", parameters={}),
-        ]
-        grammar = build_functiongemma_grammar(tools)
-        assert "read_file" in grammar
-        assert "<start_function_call>" in grammar
-        assert "<end_function_call>" in grammar
-
-    def test_multiple_tools(self) -> None:
-        tools = [
-            ToolSchema(name="read_file", description="Read", parameters={}),
-            ToolSchema(name="write_file", description="Write", parameters={}),
-        ]
-        grammar = build_functiongemma_grammar(tools)
-        assert "read_file" in grammar
-        assert "write_file" in grammar
+from structured_agents.types import Message
 
 
 class TestFunctionGemmaPlugin:
@@ -74,10 +50,12 @@ class TestFunctionGemmaPlugin:
 
     def test_extra_body_with_grammar(self) -> None:
         plugin = FunctionGemmaPlugin()
-        result = plugin.extra_body("some grammar")
-        assert result == {"guided_grammar": "some grammar"}
+        result = plugin.to_extra_body(EBNFGrammar(grammar="some grammar"))
+        assert result == {
+            "structured_outputs": {"type": "grammar", "grammar": "some grammar"}
+        }
 
     def test_extra_body_without_grammar(self) -> None:
         plugin = FunctionGemmaPlugin()
-        result = plugin.extra_body(None)
+        result = plugin.to_extra_body(None)
         assert result is None

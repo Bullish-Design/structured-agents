@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Sequence, cast
 
 from structured_agents.backends.protocol import ToolBackend
 from structured_agents.client.openai_compat import OpenAICompatibleClient
+from structured_agents.grammar.config import GrammarConfig
 from structured_agents.history import HistoryStrategy, SlidingWindowHistory
+from structured_agents.registries.protocol import ToolRegistry
 from structured_agents.observer import (
     KernelEndEvent,
     KernelStartEvent,
@@ -32,6 +34,7 @@ from structured_agents.types import (
     ToolResult,
     ToolSchema,
 )
+from structured_agents.exceptions import KernelError
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +65,28 @@ class AgentKernel:
     observer: Observer = field(default_factory=NullObserver)
     history_strategy: HistoryStrategy = field(default_factory=SlidingWindowHistory)
     max_history_messages: int = 50
+    grammar_config: GrammarConfig = field(default_factory=GrammarConfig)
+    tool_registry: ToolRegistry | None = None
     _client: OpenAICompatibleClient = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._client = OpenAICompatibleClient(self.config)
 
+    def _resolve_tools(
+        self, tools: Sequence[ToolSchema] | Sequence[str]
+    ) -> list[ToolSchema]:
+        if not tools:
+            return []
+        if isinstance(tools[0], ToolSchema):
+            return list(cast(Sequence[ToolSchema], tools))
+        if not self.tool_registry:
+            raise KernelError("Tool registry is required to resolve tool names.")
+        return self.tool_registry.resolve_all(list(cast(Sequence[str], tools)))
+
     async def step(
         self,
         messages: list[Message],
-        tools: list[ToolSchema],
+        tools: Sequence[ToolSchema] | Sequence[str],
         context: dict[str, Any] | None = None,
         turn: int = 1,
     ) -> StepResult:
@@ -87,17 +103,25 @@ class AgentKernel:
         """
         context = context or {}
 
-        formatted_messages = self.plugin.format_messages(messages, tools)
-        formatted_tools = self.plugin.format_tools(tools) if tools else None
+        resolved_tools = self._resolve_tools(tools)
 
-        grammar = self.plugin.build_grammar(tools) if tools else None
-        extra_body = self.plugin.extra_body(grammar)
+        formatted_messages = self.plugin.format_messages(messages, resolved_tools)
+        formatted_tools = (
+            self.plugin.format_tools(resolved_tools) if resolved_tools else None
+        )
+
+        grammar = (
+            self.plugin.build_grammar(resolved_tools, self.grammar_config)
+            if resolved_tools
+            else None
+        )
+        extra_body = self.plugin.to_extra_body(grammar)
 
         await self.observer.on_model_request(
             ModelRequestEvent(
                 turn=turn,
                 messages_count=len(messages),
-                tools_count=len(tools),
+                tools_count=len(resolved_tools),
                 model=self.config.model,
             )
         )
@@ -106,7 +130,7 @@ class AgentKernel:
         response = await self._client.chat_completion(
             messages=formatted_messages,
             tools=formatted_tools,
-            tool_choice=self.config.tool_choice if tools else "none",
+            tool_choice=self.config.tool_choice if resolved_tools else "none",
             max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
             extra_body=extra_body,
@@ -137,7 +161,7 @@ class AgentKernel:
         tool_results: list[ToolResult] = []
         for tool_call in tool_calls:
             tool_schema = next(
-                (tool for tool in tools if tool.name == tool_call.name),
+                (tool for tool in resolved_tools if tool.name == tool_call.name),
                 None,
             )
 
@@ -188,7 +212,7 @@ class AgentKernel:
     async def run(
         self,
         initial_messages: list[Message],
-        tools: list[ToolSchema],
+        tools: Sequence[ToolSchema] | Sequence[str],
         *,
         max_turns: int = 20,
         termination: TerminationCondition | None = None,
@@ -214,10 +238,12 @@ class AgentKernel:
         total_usage = TokenUsage(0, 0, 0)
 
         start_time = time.monotonic()
+        resolved_tools = self._resolve_tools(tools)
+
         await self.observer.on_kernel_start(
             KernelStartEvent(
                 max_turns=max_turns,
-                tools_count=len(tools),
+                tools_count=len(resolved_tools),
                 initial_messages_count=len(initial_messages),
             )
         )
@@ -236,7 +262,7 @@ class AgentKernel:
 
                 step_result = await self.step(
                     messages=messages,
-                    tools=tools,
+                    tools=resolved_tools,
                     context=context,
                     turn=turn_count,
                 )

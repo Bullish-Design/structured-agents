@@ -17,6 +17,7 @@ from structured_agents import (
     ToolResult,
     ToolSchema,
 )
+from structured_agents.grammar.config import GrammarConfig
 
 
 JOB_DESCRIPTION_PATH = (
@@ -161,8 +162,10 @@ async def run_demo(
         ]
         formatted_messages = kernel.plugin.format_messages(messages, tools)
         formatted_tools = kernel.plugin.format_tools(tools) if tools else None
-        grammar = kernel.plugin.build_grammar(tools) if tools else None
-        extra_body = kernel.plugin.extra_body(grammar)
+        grammar = (
+            kernel.plugin.build_grammar(tools, kernel.grammar_config) if tools else None
+        )
+        extra_body = kernel.plugin.to_extra_body(grammar)
         tool_choice = kernel.config.tool_choice if tools else "none"
 
         if log_requests:

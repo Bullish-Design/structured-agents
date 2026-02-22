@@ -1,16 +1,22 @@
-"""Bundle loading and management."""
-
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import yaml
 from jinja2 import Template
 
-from structured_agents.bundles.schema import BundleManifest, ToolDefinition
+from structured_agents.bundles.schema import BundleManifest, ToolReference
 from structured_agents.exceptions import BundleError
-from structured_agents.plugins import FunctionGemmaPlugin, ModelPlugin, QwenPlugin
+from structured_agents.grammar.config import GrammarConfig
+from structured_agents.plugins import ModelPlugin, get_plugin
+from structured_agents.registries import (
+    CompositeRegistry,
+    GrailRegistry,
+    GrailRegistryConfig,
+    PythonRegistry,
+    ToolRegistry,
+)
 from structured_agents.types import Message, ToolSchema
 
 
@@ -23,6 +29,8 @@ class AgentBundle:
         self._tool_schemas: list[ToolSchema] | None = None
         self._system_template = Template(manifest.initial_context.system_prompt)
         self._user_template = Template(manifest.initial_context.user_template)
+        self._registries = self._build_registries()
+        self._tool_registry = CompositeRegistry(list(self._registries.values()))
 
     @property
     def name(self) -> str:
@@ -38,13 +46,22 @@ class AgentBundle:
 
     def get_plugin(self) -> ModelPlugin:
         """Get the appropriate model plugin for this bundle."""
-        plugin_name = self.manifest.model.plugin.lower()
+        return get_plugin(self.manifest.model.plugin)
 
-        if plugin_name == "function_gemma":
-            return FunctionGemmaPlugin()
-        if plugin_name == "qwen":
-            return QwenPlugin()
-        raise BundleError(f"Unknown plugin: {plugin_name}")
+    def get_grammar_config(self) -> GrammarConfig:
+        """Build GrammarConfig from bundle settings."""
+        grammar = self.manifest.model.grammar
+        return GrammarConfig(
+            mode=cast(
+                Literal["ebnf", "structural_tag", "json_schema"],
+                grammar.mode,
+            ),
+            allow_parallel_calls=grammar.allow_parallel_calls,
+            args_format=cast(
+                Literal["permissive", "escaped_strings", "json"],
+                grammar.args_format,
+            ),
+        )
 
     @property
     def tool_schemas(self) -> list[ToolSchema]:
@@ -53,49 +70,77 @@ class AgentBundle:
             self._tool_schemas = self._build_tool_schemas()
         return self._tool_schemas
 
+    @property
+    def tool_registry(self) -> ToolRegistry:
+        """Get composite tool registry for this bundle."""
+        return self._tool_registry
+
+    def _build_registries(self) -> dict[str, ToolRegistry]:
+        registries: dict[str, ToolRegistry] = {}
+
+        for registry_name in self.manifest.registries:
+            name = registry_name.lower()
+            if name == "grail":
+                agents_dir = self.path / "tools"
+                if not agents_dir.exists():
+                    agents_dir = Path.cwd() / "agents"
+                registry = GrailRegistry(GrailRegistryConfig(agents_dir=agents_dir))
+            elif name == "python":
+                registry = PythonRegistry()
+            else:
+                raise BundleError(f"Unknown registry: {registry_name}")
+
+            registries[name] = registry
+
+        return registries
+
     def _build_tool_schemas(self) -> list[ToolSchema]:
-        """Build tool schemas from manifest."""
         schemas: list[ToolSchema] = []
-        for tool_def in self.manifest.tools:
-            properties: dict[str, Any] = {}
-            required: list[str] = []
 
-            for name, input_schema in tool_def.inputs.items():
-                prop: dict[str, Any] = {"type": input_schema.type}
-                if input_schema.description:
-                    prop["description"] = input_schema.description
-                if input_schema.enum:
-                    prop["enum"] = input_schema.enum
-                if input_schema.default is not None:
-                    prop["default"] = input_schema.default
-                properties[name] = prop
-
-                if input_schema.required:
-                    required.append(name)
-
-            parameters: dict[str, Any] = {
-                "type": "object",
-                "properties": properties,
-            }
-            if required:
-                parameters["required"] = required
-
-            script_path = self.path / tool_def.script
-            context_providers = tuple(
-                self.path / cp for cp in tool_def.context_providers
-            )
-
-            schemas.append(
-                ToolSchema(
-                    name=tool_def.name,
-                    description=tool_def.description,
-                    parameters=parameters,
-                    script_path=script_path,
-                    context_providers=context_providers,
-                )
-            )
+        for tool_ref in self.manifest.tools:
+            schema = self._resolve_tool(tool_ref)
+            schemas.append(schema)
 
         return schemas
+
+    def _resolve_tool(self, tool_ref: ToolReference) -> ToolSchema:
+        registry_name = tool_ref.registry.lower()
+        registry = self._registries.get(registry_name)
+
+        if not registry:
+            raise BundleError(f"Registry not configured: {tool_ref.registry}")
+
+        schema = registry.resolve(tool_ref.name)
+        if not schema:
+            raise BundleError(f"Tool not found: {tool_ref.name}")
+
+        description = (
+            tool_ref.description
+            if tool_ref.description is not None
+            else schema.description
+        )
+        parameters = (
+            tool_ref.inputs_override
+            if tool_ref.inputs_override is not None
+            else schema.parameters
+        )
+
+        if tool_ref.context_providers:
+            context_providers = tuple(
+                self.path / cp for cp in tool_ref.context_providers
+            )
+        else:
+            context_providers = schema.context_providers
+
+        return ToolSchema(
+            name=schema.name,
+            description=description,
+            parameters=parameters,
+            backend=schema.backend,
+            script_path=schema.script_path,
+            context_providers=context_providers,
+            mcp_server=schema.mcp_server,
+        )
 
     def build_initial_messages(
         self,
@@ -147,8 +192,8 @@ def load_bundle(directory: str | Path) -> AgentBundle:
             raise BundleError(f"Bundle manifest not found in {path}")
 
     try:
-        with manifest_path.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        with manifest_path.open("r", encoding="utf-8") as file_handle:
+            data = yaml.safe_load(file_handle)
     except Exception as exc:
         raise BundleError(f"Failed to read bundle manifest: {exc}") from exc
 
