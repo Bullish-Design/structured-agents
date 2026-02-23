@@ -33,6 +33,32 @@ def test_parse_response_with_invalid_arguments() -> None:
     assert tool_calls[0].arguments == {}
 
 
+def test_parse_response_raw_content_with_qwen_format() -> None:
+    plugin = QwenPlugin()
+    content = "Hello <function=get_weather><parameter=city>London</parameter></function> world"
+    tool_calls_raw = None
+
+    parsed_content, tool_calls = plugin.parse_response(content, tool_calls_raw)
+    assert parsed_content is None
+    assert len(tool_calls) == 1
+    assert tool_calls[0].name == "get_weather"
+    assert tool_calls[0].arguments == {"city": "London"}
+
+
+def test_parse_response_raw_content_with_json_args() -> None:
+    plugin = QwenPlugin()
+    content = (
+        '<function=search><parameter=query>{"query": "python"}</parameter></function>'
+    )
+    tool_calls_raw = None
+
+    parsed_content, tool_calls = plugin.parse_response(content, tool_calls_raw)
+    assert parsed_content is None
+    assert len(tool_calls) == 1
+    assert tool_calls[0].name == "search"
+    assert tool_calls[0].arguments == {"query": {"query": "python"}}
+
+
 def test_to_extra_body_none() -> None:
     plugin = QwenPlugin()
     assert plugin.to_extra_body(None) is None
