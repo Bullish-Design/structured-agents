@@ -15,6 +15,7 @@ from structured_agents.types import ToolSchema
 from xgrammar import StructuralTag
 from xgrammar.structural_tag import (
     GrammarFormat,
+    JSONSchemaFormat,
     OrFormat,
     SequenceFormat,
     TagFormat,
@@ -83,11 +84,12 @@ class Qwen3GrammarBuilder:
         """
         tool_tags = []
         for tool in tools:
-            args_grammar = self._build_args_grammar_for_tool(tool, config)
             tool_tags.append(
                 TagFormat(
                     begin=f"<function={tool.name}>",
-                    content=GrammarFormat(grammar=args_grammar),
+                    content=JSONSchemaFormat(
+                        json_schema=tool.parameters, style="qwen_xml"
+                    ),
                     end="</function>",
                 )
             )
