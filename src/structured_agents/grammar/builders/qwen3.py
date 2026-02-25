@@ -14,11 +14,9 @@ from structured_agents.types import ToolSchema
 
 from xgrammar import StructuralTag
 from xgrammar.structural_tag import (
-    GrammarFormat,
     QwenXMLParameterFormat,
-    OrFormat,
-    SequenceFormat,
     TagFormat,
+    TriggeredTagsFormat,
 )
 
 
@@ -75,6 +73,9 @@ class Qwen3GrammarBuilder:
     ) -> StructuralTagGrammar:
         """Build structural tag grammar for Qwen3 format.
 
+        Uses TriggeredTagsFormat so vLLM/xgrammar can dispatch tool calls
+        when the trigger prefix ``<function=`` is encountered in model output.
+
         Qwen3 format:
         <tool_call>
         <function=tool_name>
@@ -92,19 +93,14 @@ class Qwen3GrammarBuilder:
                 )
             )
 
-        if len(tool_tags) == 1:
-            tag_choice = tool_tags[0]
-        else:
-            tag_choice = OrFormat(elements=tool_tags)
-
-        if config.allow_parallel_calls:
-            format_spec = SequenceFormat(
-                elements=[tag_choice],
+        structural_tag = StructuralTag(
+            format=TriggeredTagsFormat(
+                triggers=["<function="],
+                tags=tool_tags,
+                at_least_one=True,
+                stop_after_first=not config.allow_parallel_calls,
             )
-        else:
-            format_spec = tag_choice
-
-        structural_tag = StructuralTag(format=format_spec)
+        )
         return StructuralTagGrammar(tag=structural_tag)
 
     def _build_args_grammar_for_tool(

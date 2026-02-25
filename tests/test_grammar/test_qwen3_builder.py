@@ -1,5 +1,7 @@
 """Tests for Qwen3 grammar builder."""
 
+import json
+
 from structured_agents.grammar.artifacts import (
     EBNFGrammar,
     JsonSchemaGrammar,
@@ -139,3 +141,105 @@ def test_build_ebnf_parallel_calls() -> None:
     grammar = builder.build([_tool("tool_a")], config)
     assert isinstance(grammar, EBNFGrammar)
     assert "tool_call+" in grammar.grammar
+
+
+def test_structural_tag_payload_uses_triggered_tags_format() -> None:
+    """The structural_tag payload must use TriggeredTagsFormat with triggers,
+    not bare OrFormat/TagFormat. vLLM's xgrammar backend requires 'triggers'
+    in the format to correctly dispatch tool calls."""
+    builder = Qwen3GrammarBuilder()
+    config = GrammarConfig(
+        mode="structural_tag",
+        allow_parallel_calls=False,
+    )
+    tools = [
+        _tool(
+            "get_weather",
+            {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+        ),
+        _tool(
+            "search",
+            {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        ),
+    ]
+    grammar = builder.build(tools, config)
+    assert isinstance(grammar, StructuralTagGrammar)
+    payload = grammar.to_vllm_payload()
+    tag_json = json.loads(payload["structured_outputs"]["structural_tag"])
+    fmt = tag_json["format"]
+    assert fmt["type"] == "triggered_tags", (
+        f"Expected 'triggered_tags' format, got '{fmt['type']}'"
+    )
+    assert "triggers" in fmt, "TriggeredTagsFormat must contain 'triggers'"
+    assert fmt["triggers"] == ["<function="]
+    assert "tags" in fmt
+    assert len(fmt["tags"]) == 2
+    assert fmt["tags"][0]["begin"] == "<function=get_weather>"
+    assert fmt["tags"][1]["begin"] == "<function=search>"
+
+
+def test_structural_tag_single_tool_uses_triggered_tags() -> None:
+    """Even a single tool must use TriggeredTagsFormat."""
+    builder = Qwen3GrammarBuilder()
+    config = GrammarConfig(
+        mode="structural_tag",
+        allow_parallel_calls=False,
+    )
+    grammar = builder.build(
+        [
+            _tool(
+                "get_weather",
+                {"type": "object", "properties": {"city": {"type": "string"}}},
+            )
+        ],
+        config,
+    )
+    assert isinstance(grammar, StructuralTagGrammar)
+    payload = grammar.to_vllm_payload()
+    tag_json = json.loads(payload["structured_outputs"]["structural_tag"])
+    fmt = tag_json["format"]
+    assert fmt["type"] == "triggered_tags"
+    assert fmt["triggers"] == ["<function="]
+    assert len(fmt["tags"]) == 1
+
+
+def test_structural_tag_parallel_uses_triggered_tags() -> None:
+    """Parallel calls should NOT stop_after_first."""
+    builder = Qwen3GrammarBuilder()
+    config = GrammarConfig(
+        mode="structural_tag",
+        allow_parallel_calls=True,
+    )
+    tools = [_tool("tool_a"), _tool("tool_b")]
+    grammar = builder.build(tools, config)
+    assert isinstance(grammar, StructuralTagGrammar)
+    payload = grammar.to_vllm_payload()
+    tag_json = json.loads(payload["structured_outputs"]["structural_tag"])
+    fmt = tag_json["format"]
+    assert fmt["type"] == "triggered_tags"
+    assert fmt["stop_after_first"] is False
+
+
+def test_structural_tag_sequential_stops_after_first() -> None:
+    """Non-parallel calls should stop_after_first."""
+    builder = Qwen3GrammarBuilder()
+    config = GrammarConfig(
+        mode="structural_tag",
+        allow_parallel_calls=False,
+    )
+    tools = [_tool("tool_a"), _tool("tool_b")]
+    grammar = builder.build(tools, config)
+    assert isinstance(grammar, StructuralTagGrammar)
+    payload = grammar.to_vllm_payload()
+    tag_json = json.loads(payload["structured_outputs"]["structural_tag"])
+    fmt = tag_json["format"]
+    assert fmt["type"] == "triggered_tags"
+    assert fmt["stop_after_first"] is True

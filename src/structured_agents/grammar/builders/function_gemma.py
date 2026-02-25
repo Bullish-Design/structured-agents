@@ -10,7 +10,7 @@ from structured_agents.grammar.utils import escape_ebnf_string
 from structured_agents.types import ToolSchema
 
 from xgrammar import StructuralTag
-from xgrammar.structural_tag import GrammarFormat, OrFormat, SequenceFormat, TagFormat
+from xgrammar.structural_tag import GrammarFormat, TagFormat, TriggeredTagsFormat
 
 
 class FunctionGemmaGrammarBuilder:
@@ -64,7 +64,11 @@ class FunctionGemmaGrammarBuilder:
     def _build_structural_tag(
         self, tools: list[ToolSchema], config: GrammarConfig
     ) -> StructuralTagGrammar:
-        """Build structural tag for FunctionGemma format."""
+        """Build structural tag for FunctionGemma format.
+
+        Uses TriggeredTagsFormat so vLLM/xgrammar can dispatch tool calls
+        when the trigger prefix ``<start_function_call>call:`` is encountered.
+        """
         tool_formats = []
 
         for tool in tools:
@@ -78,15 +82,14 @@ class FunctionGemmaGrammarBuilder:
                 )
             )
 
-        if len(tool_formats) == 1:
-            format_spec = tool_formats[0]
-        else:
-            format_spec = OrFormat(elements=tool_formats)
-
-        if config.allow_parallel_calls:
-            format_spec = SequenceFormat(elements=[format_spec])
-
-        tag = StructuralTag(format=format_spec)
+        tag = StructuralTag(
+            format=TriggeredTagsFormat(
+                triggers=["<start_function_call>call:"],
+                tags=tool_formats,
+                at_least_one=True,
+                stop_after_first=not config.allow_parallel_calls,
+            )
+        )
 
         return StructuralTagGrammar(tag=tag)
 

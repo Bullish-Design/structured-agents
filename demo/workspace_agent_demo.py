@@ -1,7 +1,10 @@
 import asyncio
+import json
+import logging
 import os
 import time
 from asyncio import run
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -185,6 +188,97 @@ class MetricsObserver:
         return f"Model avg: {avg_model:.0f}ms, Tool avg: {avg_tool:.0f}ms"
 
 
+class LoggingObserver:
+    """Observer that writes detailed event data to a log file."""
+
+    def __init__(self, logger: logging.Logger) -> None:
+        self._logger = logger
+
+    async def on_kernel_start(self, event: KernelStartEvent) -> None:
+        self._logger.info(
+            "=== KERNEL START === tools=%d, max_turns=%d, initial_messages=%d",
+            event.tools_count,
+            event.max_turns,
+            event.initial_messages_count,
+        )
+
+    async def on_model_request(self, event: ModelRequestEvent) -> None:
+        self._logger.info(
+            ">>> MODEL REQUEST >>> turn=%d, messages=%d, tools=%d, model=%s",
+            event.turn,
+            event.messages_count,
+            event.tools_count,
+            event.model,
+        )
+
+    async def on_model_response(self, event: ModelResponseEvent) -> None:
+        usage_dict: dict[str, Any] | None = None
+        if event.usage:
+            usage_dict = {
+                "prompt_tokens": event.usage.prompt_tokens,
+                "completion_tokens": event.usage.completion_tokens,
+                "total_tokens": event.usage.total_tokens,
+            }
+        self._logger.info(
+            "<<< MODEL RESPONSE <<< turn=%d, duration_ms=%d, tool_calls=%d, usage=%s",
+            event.turn,
+            event.duration_ms,
+            event.tool_calls_count,
+            json.dumps(usage_dict),
+        )
+        self._logger.info(
+            "<<< MODEL RESPONSE CONTENT <<< turn=%d, content=%s",
+            event.turn,
+            event.content,
+        )
+
+    async def on_tool_call(self, event: ToolCallEvent) -> None:
+        self._logger.info(
+            "--- TOOL CALL --- turn=%d, tool=%s, call_id=%s, arguments=%s",
+            event.turn,
+            event.tool_name,
+            event.call_id,
+            json.dumps(event.arguments, default=str),
+        )
+
+    async def on_tool_result(self, event: ToolResultEvent) -> None:
+        self._logger.info(
+            "--- TOOL RESULT --- turn=%d, tool=%s, call_id=%s, is_error=%s, duration_ms=%d, output=%s",
+            event.turn,
+            event.tool_name,
+            event.call_id,
+            event.is_error,
+            event.duration_ms,
+            event.output_preview,
+        )
+
+    async def on_turn_complete(self, event: TurnCompleteEvent) -> None:
+        self._logger.info(
+            "=== TURN COMPLETE === turn=%d, tool_calls=%d, tool_results=%d, errors=%d",
+            event.turn,
+            event.tool_calls_count,
+            event.tool_results_count,
+            event.errors_count,
+        )
+
+    async def on_kernel_end(self, event: KernelEndEvent) -> None:
+        self._logger.info(
+            "=== KERNEL END === turns=%d, reason=%s, total_duration_ms=%d",
+            event.turn_count,
+            event.termination_reason,
+            event.total_duration_ms,
+        )
+
+    async def on_error(self, error: Exception, context: str | None = None) -> None:
+        self._logger.error(
+            "!!! ERROR !!! context=%s, error=%s, type=%s",
+            context,
+            error,
+            type(error).__name__,
+            exc_info=True,
+        )
+
+
 class WorkspaceAgent:
     """Workspace agent using AgentKernel with bundle configuration."""
 
@@ -207,7 +301,11 @@ class WorkspaceAgent:
 
         self.demo_observer = DemoObserver()
         self.metrics_observer = MetricsObserver()
-        self.observer = CompositeObserver([self.demo_observer, self.metrics_observer])
+        self.run_logger = logging.getLogger("demo.workspace_agent")
+        self.logging_observer = LoggingObserver(self.run_logger)
+        self.observer = CompositeObserver(
+            [self.demo_observer, self.metrics_observer, self.logging_observer]
+        )
 
         self.kernel_config = KernelConfig(
             base_url="http://remora-server:8000/v1",
@@ -235,7 +333,25 @@ class WorkspaceAgent:
         """Process a natural language message through the full agent loop."""
         self.inbox.append({"text": user_input, "timestamp": time.time()})
 
+        self.run_logger.info("=" * 70)
+        self.run_logger.info("PROCESS MESSAGE: %s", user_input)
+        self.run_logger.info("Grammar config: %s", self.kernel.grammar_config)
+        self.run_logger.info(
+            "Tool schemas: %s", [t.name for t in self.bundle.tool_schemas]
+        )
+
         messages = self.bundle.build_initial_messages({"input": user_input})
+
+        self.run_logger.info(
+            "Initial messages: %s",
+            json.dumps(
+                [
+                    {"role": m.role, "content": m.content[:200] if m.content else None}
+                    for m in messages
+                ],
+                default=str,
+            ),
+        )
 
         result = await self.kernel.run(
             initial_messages=messages,
@@ -243,6 +359,23 @@ class WorkspaceAgent:
             max_turns=max_turns,
             termination=lambda r: r.name == "submit_result",
             context_provider=self._provide_context,
+        )
+
+        self.run_logger.info(
+            "RUN COMPLETE: turns=%d, reason=%s",
+            result.turn_count,
+            result.termination_reason,
+        )
+        if result.total_usage:
+            self.run_logger.info(
+                "Total usage: prompt=%d, completion=%d, total=%d",
+                result.total_usage.prompt_tokens,
+                result.total_usage.completion_tokens,
+                result.total_usage.total_tokens,
+            )
+        self.run_logger.info(
+            "Final message: %s",
+            result.final_message.content if result.final_message else "N/A",
         )
 
         self.outbox.append(
@@ -288,8 +421,15 @@ async def preflight_check(base_url: str) -> bool:
         return False
 
 
+_section_logger = logging.getLogger("demo.sections")
+
+
 async def section_1_bundle_loading(bundle_dir: Path) -> AgentBundle:
     """Section 1: Bundle Loading & Configuration."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 1: Bundle Loading & Configuration")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 1: Bundle Loading & Configuration")
     print("=" * 70)
@@ -310,6 +450,10 @@ async def section_1_bundle_loading(bundle_dir: Path) -> AgentBundle:
 
 async def section_2_single_turn(agent: WorkspaceAgent) -> None:
     """Section 2: Single-Turn with Observer."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 2: Single-Turn with Observer")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 2: Single-Turn with Observer")
     print("=" * 70)
@@ -327,6 +471,10 @@ async def section_2_single_turn(agent: WorkspaceAgent) -> None:
 
 async def section_3_multi_turn(agent: WorkspaceAgent) -> None:
     """Section 3: Multi-Turn Agent Loop."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 3: Multi-Turn Agent Loop")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 3: Multi-Turn Agent Loop")
     print("=" * 70)
@@ -349,6 +497,10 @@ async def section_3_multi_turn(agent: WorkspaceAgent) -> None:
 
 async def section_4_grammar_modes(agent_dir: Path) -> None:
     """Section 4: Grammar Modes Comparison."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 4: Grammar Modes Comparison")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 4: Grammar Modes Comparison")
     print("=" * 70)
@@ -374,6 +526,9 @@ async def section_4_grammar_modes(agent_dir: Path) -> None:
 
     for mode_name, grammar_config in modes:
         print(f"\n  --- Grammar mode: {mode_name} ---")
+        _section_logger.info(
+            "Grammar mode test: %s, config=%s", mode_name, grammar_config
+        )
 
         obs = DemoObserver()
         kernel = AgentKernel(
@@ -408,6 +563,10 @@ async def section_4_grammar_modes(agent_dir: Path) -> None:
 
 async def section_5_concurrent_tools(agent: WorkspaceAgent) -> None:
     """Section 5: Concurrent Tool Execution."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 5: Concurrent Tool Execution")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 5: Concurrent Tool Execution")
     print("=" * 70)
@@ -488,6 +647,10 @@ async def create_kernel_for_query(
 
 async def section_6_batched_inference(bundle_dir: Path) -> None:
     """Section 6: Batched Async Inference."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 6: Batched Async Inference")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 6: Batched Async Inference")
     print("=" * 70)
@@ -530,6 +693,10 @@ async def section_6_batched_inference(bundle_dir: Path) -> None:
 
 async def section_7_error_handling(agent: WorkspaceAgent) -> None:
     """Section 7: Error Handling."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 7: Error Handling")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 7: Error Handling")
     print("=" * 70)
@@ -551,6 +718,10 @@ async def section_7_error_handling(agent: WorkspaceAgent) -> None:
 
 async def section_8_summary(agent: WorkspaceAgent) -> None:
     """Section 8: Summary & Metrics."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 8: Summary & Metrics")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 8: Summary & Metrics")
     print("=" * 70)
@@ -567,6 +738,10 @@ async def section_8_summary(agent: WorkspaceAgent) -> None:
 
 async def section_9_plugin_swap(bundle_dir: Path) -> None:
     """Section 9: Swappable Model Plugins."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 9: Swappable Model Plugins")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 9: Swappable Model Plugins")
     print("=" * 70)
@@ -591,6 +766,10 @@ async def section_9_plugin_swap(bundle_dir: Path) -> None:
 
 async def section_10_registry_discovery(bundle_dir: Path) -> None:
     """Section 10: GrailRegistry Auto-Discovery."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 10: GrailRegistry Auto-Discovery")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 10: GrailRegistry Auto-Discovery")
     print("=" * 70)
@@ -620,6 +799,10 @@ async def section_10_registry_discovery(bundle_dir: Path) -> None:
 
 async def section_11_composite_observer(agent: WorkspaceAgent) -> None:
     """Section 11: CompositeObserver Demonstration."""
+    _section_logger.info("=" * 70)
+    _section_logger.info("BEGIN Section 11: CompositeObserver")
+    _section_logger.info("=" * 70)
+
     print("\n" + "=" * 70)
     print("Section 11: CompositeObserver")
     print("=" * 70)
@@ -627,6 +810,7 @@ async def section_11_composite_observer(agent: WorkspaceAgent) -> None:
     print(f"\n  WorkspaceAgent uses CompositeObserver with:")
     print(f"    - DemoObserver: logs all events to console")
     print(f"    - MetricsObserver: collects timing metrics")
+    print(f"    - LoggingObserver: writes detailed data to log file")
 
     print(f"\n  DemoObserver events captured: {len(agent.demo_observer.events)}")
     event_types = {}
@@ -643,6 +827,31 @@ async def main() -> None:
     print("\n" + "=" * 70)
     print("Workspace Agent Demo: structured-agents Gold Standard")
     print("=" * 70)
+
+    # --- Set up per-run file logging ---
+    log_dir = Path(__file__).parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    log_file = log_dir / f"run_{timestamp}.log"
+
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(name)s | %(levelname)s | %(message)s")
+    )
+
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    root_logger.setLevel(logging.DEBUG)
+
+    # Ensure the openai_compat logger captures request details (model, tools, extra_body)
+    logging.getLogger("structured_agents.client.openai_compat").setLevel(logging.DEBUG)
+
+    print(f"  Log file: {log_file}")
+
+    _section_logger.info("=" * 70)
+    _section_logger.info("DEMO RUN STARTED at %s", timestamp)
+    _section_logger.info("=" * 70)
 
     base_url = "http://remora-server:8000/v1"
     print("\n  Pre-flight: Checking vLLM connectivity...")
@@ -687,6 +896,10 @@ async def main() -> None:
 
     finally:
         await agent.close()
+
+    _section_logger.info("=" * 70)
+    _section_logger.info("DEMO RUN COMPLETE")
+    _section_logger.info("=" * 70)
 
     print("\n" + "=" * 70)
     print("Demo Complete")

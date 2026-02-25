@@ -9,7 +9,7 @@ from structured_agents.types import ToolSchema
 
 
 def test_structural_tag_uses_qwen_xml_parameter_format():
-    """Test that structural_tag mode uses QwenXMLParameterFormat."""
+    """Test that structural_tag mode uses QwenXMLParameterFormat inside TriggeredTagsFormat."""
     builder = Qwen3GrammarBuilder()
     config = GrammarConfig(mode="structural_tag", allow_parallel_calls=False)
 
@@ -31,13 +31,15 @@ def test_structural_tag_uses_qwen_xml_parameter_format():
     assert grammar is not None
     assert isinstance(grammar, StructuralTagGrammar)
 
-    # Check that it uses QwenXMLParameterFormat
+    # Check that it uses TriggeredTagsFormat with QwenXMLParameterFormat content
     tag_json = grammar.tag.model_dump_json()
     tag_dict = json.loads(tag_json)
 
-    # Verify the structure uses QwenXMLParameterFormat
     format_spec = tag_dict.get("format", {})
-    content = format_spec.get("content", {})
+    assert format_spec.get("type") == "triggered_tags"
+    tags = format_spec.get("tags", [])
+    assert len(tags) == 1
+    content = tags[0].get("content", {})
     assert content.get("type") == "qwen_xml_parameter", (
         f"Expected qwen_xml_parameter format, got {content.get('type')}"
     )
@@ -45,7 +47,7 @@ def test_structural_tag_uses_qwen_xml_parameter_format():
 
 
 def test_structural_tag_multiple_tools():
-    """Test structural_tag with multiple tools."""
+    """Test structural_tag with multiple tools uses TriggeredTagsFormat."""
     builder = Qwen3GrammarBuilder()
     config = GrammarConfig(mode="structural_tag", allow_parallel_calls=True)
 
@@ -77,12 +79,12 @@ def test_structural_tag_multiple_tools():
     tag_json = grammar.tag.model_dump_json()
     tag_dict = json.loads(tag_json)
 
-    # With allow_parallel_calls=True, should have SequenceFormat wrapping OrFormat
+    # With allow_parallel_calls=True, should have TriggeredTagsFormat with both tools
     format_spec = tag_dict.get("format", {})
-    assert format_spec.get("type") == "sequence"
-    # The sequence should contain an OrFormat with the tool options
-    elements = format_spec.get("elements", [])
-    assert len(elements) == 1
-    inner = elements[0]
-    assert inner.get("type") == "or"
-    assert len(inner.get("elements", [])) == 2
+    assert format_spec.get("type") == "triggered_tags"
+    assert format_spec.get("triggers") == ["<function="]
+    assert format_spec.get("stop_after_first") is False
+    tags = format_spec.get("tags", [])
+    assert len(tags) == 2
+    assert tags[0]["begin"] == "<function=add>"
+    assert tags[1]["begin"] == "<function=subtract>"
