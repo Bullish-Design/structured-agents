@@ -12,7 +12,7 @@ dependencies = [
     "jinja2>=3.0",
     "grail",
     "fsdantic",
-    "xgrammar>=0.1.7",
+    "xgrammar==0.1.29",
     "vllm>=0.15.1",
 ]
 

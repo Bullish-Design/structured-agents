@@ -46,8 +46,10 @@ class JsonSchemaGrammar:
     def to_vllm_payload(self) -> dict[str, Any]:
         return {
             "structured_outputs": {
-                "type": "json_schema",
-                "json_schema": self.schema,
+                "type": "json",
+                "json": {
+                    "json_schema": self.schema,
+                },
             }
         }
 
