@@ -3,7 +3,7 @@ version: "1.0"
 model:
   plugin: "qwen"
   grammar:
-    mode: "json_schema"
+    mode: "structural_tag"
     allow_parallel_calls: true
     args_format: "permissive"
     send_tools_to_api: false

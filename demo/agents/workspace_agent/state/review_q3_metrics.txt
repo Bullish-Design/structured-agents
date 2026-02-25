@@ -1,3 +1,0 @@
-status:in-progress
-priority:medium
-note:Using data from sales reports and customer feedback forms.

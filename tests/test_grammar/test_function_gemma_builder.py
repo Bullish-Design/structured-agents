@@ -70,4 +70,4 @@ def test_build_structural_tag() -> None:
     grammar = builder.build([_tool("tool_a"), _tool("tool_b")], config)
     assert isinstance(grammar, StructuralTagGrammar)
     payload = grammar.to_vllm_payload()
-    assert payload["structured_outputs"]["type"] == "structural_tag"
+    assert "structural_tag" in payload["structured_outputs"]

@@ -51,9 +51,7 @@ class TestFunctionGemmaPlugin:
     def test_extra_body_with_grammar(self) -> None:
         plugin = FunctionGemmaPlugin()
         result = plugin.to_extra_body(EBNFGrammar(grammar="some grammar"))
-        assert result == {
-            "structured_outputs": {"type": "grammar", "grammar": "some grammar"}
-        }
+        assert result == {"structured_outputs": {"grammar": "some grammar"}}
 
     def test_extra_body_without_grammar(self) -> None:
         plugin = FunctionGemmaPlugin()

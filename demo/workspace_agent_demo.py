@@ -43,24 +43,33 @@ def build_externals(
     agent_id: str, context: dict[str, Any]
 ) -> dict[str, Callable[..., Any]]:
     async def ensure_dir(path: str) -> None:
-        os.makedirs(path, exist_ok=True)
+        await asyncio.to_thread(os.makedirs, path, exist_ok=True)
 
     async def write_file(path: str, content: str) -> None:
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(content)
+        def _write() -> None:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+
+        await asyncio.to_thread(_write)
 
     async def read_file(path: str) -> str:
-        with open(path, "r", encoding="utf-8") as fh:
-            return fh.read()
+        def _read() -> str:
+            with open(path, "r", encoding="utf-8") as fh:
+                return fh.read()
+
+        return await asyncio.to_thread(_read)
 
     async def list_dir(path: str) -> list[str]:
-        try:
-            return sorted(os.listdir(path))
-        except FileNotFoundError:
-            return []
+        def _list() -> list[str]:
+            try:
+                return sorted(os.listdir(path))
+            except FileNotFoundError:
+                return []
+
+        return await asyncio.to_thread(_list)
 
     async def file_exists(path: str) -> bool:
-        return os.path.exists(path)
+        return await asyncio.to_thread(os.path.exists, path)
 
     return {
         "ensure_dir": ensure_dir,
@@ -253,6 +262,30 @@ class WorkspaceAgent:
     async def close(self) -> None:
         await self.kernel.close()
         self.backend.shutdown()
+
+    def reset_observers(self) -> None:
+        """Reset observer state between demo sections."""
+        self.demo_observer.events.clear()
+        self.metrics_observer.model_durations.clear()
+        self.metrics_observer.tool_durations.clear()
+
+
+async def preflight_check(base_url: str) -> bool:
+    """Check vLLM server connectivity before running demo."""
+    import httpx
+
+    health_url = base_url.replace("/v1", "/health")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(health_url)
+            if resp.status_code == 200:
+                print(f"  vLLM server at {base_url}: OK")
+                return True
+            print(f"  vLLM server at {base_url}: HTTP {resp.status_code}")
+            return False
+    except Exception as e:
+        print(f"  vLLM server at {base_url}: UNREACHABLE ({e})")
+        return False
 
 
 async def section_1_bundle_loading(bundle_dir: Path) -> AgentBundle:
@@ -611,19 +644,45 @@ async def main() -> None:
     print("Workspace Agent Demo: structured-agents Gold Standard")
     print("=" * 70)
 
+    base_url = "http://remora-server:8000/v1"
+    print("\n  Pre-flight: Checking vLLM connectivity...")
+    if not await preflight_check(base_url):
+        print("\n  ABORT: Cannot reach vLLM server. Start it first.")
+        return
+
+    import shutil
+
+    if STATE_DIR.exists():
+        shutil.rmtree(STATE_DIR)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"  State directory cleaned: {STATE_DIR}")
+
     agent = WorkspaceAgent(AGENT_DIR)
 
     try:
         await section_1_bundle_loading(AGENT_DIR)
+
+        agent.reset_observers()
         await section_2_single_turn(agent)
+
+        agent.reset_observers()
         await section_3_multi_turn(agent)
+
         await section_4_grammar_modes(AGENT_DIR)
+
+        agent.reset_observers()
         await section_5_concurrent_tools(agent)
+
         await section_6_batched_inference(AGENT_DIR)
+
+        agent.reset_observers()
         await section_7_error_handling(agent)
+
         await section_8_summary(agent)
+
         await section_9_plugin_swap(AGENT_DIR)
         await section_10_registry_discovery(AGENT_DIR)
+
         await section_11_composite_observer(agent)
 
     finally:

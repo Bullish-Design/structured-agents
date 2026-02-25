@@ -43,7 +43,7 @@ def test_build_structural_tag_single_tool() -> None:
     grammar = builder.build([tool], config)
     assert isinstance(grammar, StructuralTagGrammar)
     payload = grammar.to_vllm_payload()
-    assert payload["structured_outputs"]["type"] == "structural_tag"
+    assert "structural_tag" in payload["structured_outputs"]
 
 
 def test_build_structural_tag_multiple_tools() -> None:

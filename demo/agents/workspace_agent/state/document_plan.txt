@@ -1,3 +1,0 @@
-status:in_progress
-priority:medium
-note:Revising priority after reviewing requirements.
