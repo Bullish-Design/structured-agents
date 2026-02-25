@@ -16,7 +16,6 @@ class EBNFGrammar:
     def to_vllm_payload(self) -> dict[str, Any]:
         return {
             "structured_outputs": {
-                "type": "grammar",
                 "grammar": self.grammar,
             }
         }
@@ -31,7 +30,6 @@ class StructuralTagGrammar:
     def to_vllm_payload(self) -> dict[str, Any]:
         return {
             "structured_outputs": {
-                "type": "structural_tag",
                 "structural_tag": self.tag.model_dump_json(),
             }
         }
@@ -46,7 +44,6 @@ class JsonSchemaGrammar:
     def to_vllm_payload(self) -> dict[str, Any]:
         return {
             "structured_outputs": {
-                "type": "json",
                 "json": {
                     "json_schema": self.schema,
                 },

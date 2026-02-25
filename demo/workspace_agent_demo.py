@@ -1,7 +1,6 @@
 import asyncio
 import os
 import time
-import uuid
 from asyncio import run
 from pathlib import Path
 from typing import Any, Callable
@@ -287,11 +286,10 @@ async def section_2_single_turn(agent: WorkspaceAgent) -> None:
 
     result = await agent.process_message(query, max_turns=3)
 
-    print(f"\n  StepResult:")
-    print(f"    Tool calls: {len(result.tool_calls) if result.tool_calls else 0}")
-    print(
-        f"    Final message: {result.final_message.content[:100] if result.final_message and result.final_message.content else 'N/A'}..."
-    )
+    print(f"\n  RunResult:")
+    print(f"    Turns taken: {result.turn_count}")
+    print(f"    Termination reason: {result.termination_reason}")
+    print(f"    History messages: {len(result.history)}")
 
 
 async def section_3_multi_turn(agent: WorkspaceAgent) -> None:

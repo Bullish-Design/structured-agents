@@ -51,7 +51,20 @@ class OpenAICompatibleClient:
             if extra_body:
                 kwargs["extra_body"] = extra_body
 
+            logger.debug(
+                "Chat completion request: model=%s, tools=%d, extra_body=%s",
+                model or self._config.model,
+                len(tools) if tools else 0,
+                extra_body,
+            )
+
             response = await self._client.chat.completions.create(**kwargs)
+
+            if not response.choices:
+                raise KernelError(
+                    f"LLM returned no choices. Raw response: {response.model_dump()}",
+                    phase="model_call",
+                )
 
             choice = response.choices[0]
             message = choice.message

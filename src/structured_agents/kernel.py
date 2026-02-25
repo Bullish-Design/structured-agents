@@ -131,7 +131,9 @@ class AgentKernel:
 
         formatted_messages = self.plugin.format_messages(messages, resolved_tools)
         formatted_tools = (
-            self.plugin.format_tools(resolved_tools) if resolved_tools else None
+            self.plugin.format_tools(resolved_tools)
+            if resolved_tools and self.grammar_config.send_tools_to_api
+            else None
         )
 
         grammar = (
