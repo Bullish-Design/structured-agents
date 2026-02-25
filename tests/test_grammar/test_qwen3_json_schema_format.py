@@ -1,14 +1,15 @@
-"""Tests for Qwen3 JSONSchemaFormat with qwen_xml style."""
+"""Tests for Qwen3 QwenXMLParameterFormat."""
 
 import json
 import pytest
 from structured_agents.grammar.builders.qwen3 import Qwen3GrammarBuilder
 from structured_agents.grammar.config import GrammarConfig
+from structured_agents.grammar.artifacts import StructuralTagGrammar
 from structured_agents.types import ToolSchema
 
 
-def test_structural_tag_uses_json_schema_format():
-    """Test that structural_tag mode uses JSONSchemaFormat with qwen_xml style."""
+def test_structural_tag_uses_qwen_xml_parameter_format():
+    """Test that structural_tag mode uses QwenXMLParameterFormat."""
     builder = Qwen3GrammarBuilder()
     config = GrammarConfig(mode="structural_tag", allow_parallel_calls=False)
 
@@ -28,14 +29,60 @@ def test_structural_tag_uses_json_schema_format():
 
     grammar = builder.build([tool], config)
     assert grammar is not None
+    assert isinstance(grammar, StructuralTagGrammar)
 
-    # Check that it uses JSON schema with qwen_xml style
+    # Check that it uses QwenXMLParameterFormat
     tag_json = grammar.tag.model_dump_json()
     tag_dict = json.loads(tag_json)
 
-    # Verify the structure uses JSONSchemaFormat
-    format = tag_dict.get("format", {})
-    content = format.get("content", {})
-    assert content.get("type") == "json_schema", (
-        f"Expected json_schema format, got {content.get('type')}"
+    # Verify the structure uses QwenXMLParameterFormat
+    format_spec = tag_dict.get("format", {})
+    content = format_spec.get("content", {})
+    assert content.get("type") == "qwen_xml_parameter", (
+        f"Expected qwen_xml_parameter format, got {content.get('type')}"
     )
+    assert "json_schema" in content, "Should have json_schema field"
+
+
+def test_structural_tag_multiple_tools():
+    """Test structural_tag with multiple tools."""
+    builder = Qwen3GrammarBuilder()
+    config = GrammarConfig(mode="structural_tag", allow_parallel_calls=True)
+
+    tools = [
+        ToolSchema(
+            name="add",
+            description="Add two numbers",
+            parameters={
+                "type": "object",
+                "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+                "required": ["a", "b"],
+            },
+        ),
+        ToolSchema(
+            name="subtract",
+            description="Subtract two numbers",
+            parameters={
+                "type": "object",
+                "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+                "required": ["a", "b"],
+            },
+        ),
+    ]
+
+    grammar = builder.build(tools, config)
+    assert grammar is not None
+    assert isinstance(grammar, StructuralTagGrammar)
+
+    tag_json = grammar.tag.model_dump_json()
+    tag_dict = json.loads(tag_json)
+
+    # With allow_parallel_calls=True, should have SequenceFormat wrapping OrFormat
+    format_spec = tag_dict.get("format", {})
+    assert format_spec.get("type") == "sequence"
+    # The sequence should contain an OrFormat with the tool options
+    elements = format_spec.get("elements", [])
+    assert len(elements) == 1
+    inner = elements[0]
+    assert inner.get("type") == "or"
+    assert len(inner.get("elements", [])) == 2
