@@ -92,6 +92,7 @@ class QwenResponseParser(ResponseParser):
                     args = {}
                     logger.warning("Failed to parse arguments: %s", args_str)
 
+                args = self._clean_arguments(args)
                 tool_calls.append(
                     ToolCall(
                         id=tc.get("id", f"call_{id(tc)}"),
@@ -111,6 +112,27 @@ class QwenResponseParser(ResponseParser):
 
         return content, tool_calls
 
+    def _clean_arguments(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Clean up quote noise from arguments.
+
+        vLLM sometimes returns string values with extra quotes around them,
+        especially for enum values. This removes the surrounding quotes
+        and whitespace.
+        """
+        cleaned = {}
+        for key, value in args.items():
+            if isinstance(value, str):
+                value = value.strip()
+                if len(value) >= 2:
+                    if (value[0] == '"' and value[-1] == '"') or (
+                        value[0] == "'" and value[-1] == "'"
+                    ):
+                        value = value[1:-1]
+                cleaned[key] = value
+            else:
+                cleaned[key] = value
+        return cleaned
+
     def _parse_qwen_xml_parameters(self, params_str: str) -> dict[str, Any]:
         """Parse Qwen XML parameter format: <parameter=name>value</parameter>"""
         args = {}
@@ -122,4 +144,4 @@ class QwenResponseParser(ResponseParser):
                 args[key] = json.loads(value)
             except json.JSONDecodeError:
                 args[key] = value
-        return args
+        return self._clean_arguments(args)

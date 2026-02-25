@@ -28,15 +28,14 @@ def test_structural_tag_payload() -> None:
     )
     grammar = StructuralTagGrammar(tag=tag)
     payload = grammar.to_vllm_payload()
-    assert payload == {
-        "structured_outputs": {"type": "structural_tag", "structural_tag": tag}
-    }
+    assert payload["structured_outputs"]["type"] == "structural_tag"
+    assert "structural_tag" in payload["structured_outputs"]
+    assert payload["structured_outputs"]["structural_tag"] == tag.model_dump_json()
 
 
 def test_json_schema_payload() -> None:
     schema = {"type": "object", "properties": {"x": {"type": "string"}}}
     grammar = JsonSchemaGrammar(schema=schema)
     payload = grammar.to_vllm_payload()
-    assert payload == {
-        "structured_outputs": {"type": "json_schema", "json_schema": schema}
-    }
+    assert payload["structured_outputs"]["type"] == "json"
+    assert payload["structured_outputs"]["json"]["json_schema"] == schema

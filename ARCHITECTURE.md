@@ -132,6 +132,69 @@ Events are emitted in this order per turn:
 - `openai`: used by the OpenAI-compatible client.
 - `xgrammar`: required for grammar-constrained decoding.
 
+## Grammar-Constrained Decoding
+
+The library supports multiple grammar modes via XGrammar for controlling model output structure:
+
+### Grammar Configuration
+
+```python
+from structured_agents.grammar.config import GrammarConfig
+
+grammar_config = GrammarConfig(
+    mode="structural_tag",  # "ebnf", "structural_tag", or "json_schema"
+    allow_parallel_calls=True,  # Allow multiple tool calls in one response
+    args_format="permissive",  # "permissive", "escaped_strings", or "json"
+)
+```
+
+### Supported Modes by Plugin
+
+| Plugin | ebnf | structural_tag | json_schema |
+|--------|------|---------------|-------------|
+| FunctionGemmaPlugin | ✅ | ✅ | ✅ |
+| QwenPlugin | ❌ (vLLM override) | ✅ (recommended) | ❌ (schema mismatch) |
+
+### Mode Details
+
+- **`structural_tag`**: XGrammar structural tags. **Recommended for Qwen models.** Uses `QwenXMLParameterFormat` internally, which the model is specifically trained to generate. This is the only mode that works reliably with Qwen.
+
+- **`ebnf`**: EBNF grammar format. Works for FunctionGemma. For Qwen, vLLM automatically sets its own JSON schema when tools are provided, which overrides the EBNF grammar and causes empty arguments.
+
+- **`json_schema`**: JSON schema constraint. Works for FunctionGemma. For Qwen, the schema format doesn't match what the model expects.
+
+### Why structural_tag Works for Qwen
+
+The `structural_tag` mode uses `QwenXMLParameterFormat` which generates output in the exact XML format that Qwen3 was trained on:
+
+```xml
+<function=tool_name>
+<parameter=key>value</parameter>
+</function>
+```
+
+vLLM's `qwen3_xml` tool parser is specifically designed to parse this format, resulting in correct tool call extraction with arguments.
+
+### Recommended Configuration for Qwen
+
+```python
+from structured_agents.plugins import QwenPlugin
+from structured_agents.grammar.config import GrammarConfig
+
+plugin = QwenPlugin()
+grammar = plugin.build_grammar(
+    tools, 
+    GrammarConfig(
+        mode="structural_tag",  # Only mode that works reliably for Qwen
+        allow_parallel_calls=True,
+    )
+)
+```
+
+### Response Parsing
+
+The Qwen response parser automatically cleans up quote noise from enum values. vLLM sometimes returns string arguments with extra surrounding quotes, which are automatically stripped.
+
 ## Related Documents
 
 - `DEV_GUIDE.md`: contributor-focused implementation and workflow details.

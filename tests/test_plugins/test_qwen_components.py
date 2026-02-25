@@ -65,3 +65,34 @@ def test_grammar_provider_empty_tools() -> None:
     config = GrammarConfig(mode="ebnf")
     artifact = provider.build_grammar([], config)
     assert artifact is None
+
+
+def test_response_parser_cleans_quotes() -> None:
+    parser = QwenResponseParser()
+    _, calls = parser.parse_response(
+        None,
+        [
+            {
+                "id": "call_1",
+                "function": {
+                    "name": "calculator",
+                    "arguments": '{"operation": " \\"add\\" ", "a": 5, "b": 3}',
+                },
+            }
+        ],
+    )
+    assert calls[0].arguments == {"operation": "add", "a": 5, "b": 3}
+
+
+def test_response_parser_cleans_quotes_single() -> None:
+    parser = QwenResponseParser()
+    _, calls = parser.parse_response(
+        None,
+        [
+            {
+                "id": "call_1",
+                "function": {"name": "echo", "arguments": '{"text": " \\"hello\\" "}'},
+            }
+        ],
+    )
+    assert calls[0].arguments == {"text": "hello"}

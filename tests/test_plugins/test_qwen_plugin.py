@@ -1,5 +1,6 @@
 """Tests for Qwen plugin."""
 
+from structured_agents.grammar.config import GrammarConfig
 from structured_agents.plugins.qwen import QwenPlugin
 
 
@@ -57,6 +58,14 @@ def test_parse_response_raw_content_with_json_args() -> None:
     assert len(tool_calls) == 1
     assert tool_calls[0].name == "search"
     assert tool_calls[0].arguments == {"query": {"query": "python"}}
+
+
+def test_default_grammar_config() -> None:
+    plugin = QwenPlugin()
+    config = plugin.default_grammar_config
+    assert config.mode == "structural_tag"
+    assert config.allow_parallel_calls is True
+    assert config.args_format == "permissive"
 
 
 def test_to_extra_body_none() -> None:
