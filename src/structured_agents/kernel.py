@@ -167,6 +167,10 @@ class AgentKernel:
                 termination_reason = "no_tool_calls"
                 break
 
+            if step_result.tool_results:
+                termination_reason = "no_tool_calls"
+                break
+
         final_message = (
             messages[-1] if messages else Message(role="assistant", content="")
         )
