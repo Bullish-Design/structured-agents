@@ -1,12 +1,13 @@
 # Ultimate Demo
 
-A comprehensive demonstration of structured agents with grammar-constrained decoding, subagent orchestration, and state management.
+A comprehensive demonstration of structured agents with native tool calling, subagent orchestration, and state management.
 
 ## Overview
 
 The Ultimate Demo showcases a **project coordination agent** that manages tasks, risks, and stakeholder updates using AI-powered subagents. It demonstrates:
 
-- **Grammar-constrained decoding** using structural tags (xgrammar)
+- **Native tool calling** via vLLM’s OpenAI-compatible API
+- **Optional structured outputs** via `ConstraintPipeline` when enabled
 - **Subagent delegation** for specialized tasks (planning, risk analysis)
 - **State management** with structured tool calls
 - **Event observation** for monitoring agent behavior
@@ -43,7 +44,7 @@ The demo simulates a project coordinator that processes user requests and delega
 │                    AgentKernel                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
 │  │ ModelClient  │  │ ModelAdapter │  │ ConstraintPipeline│ │
-│  │ (vLLM)       │  │ (QwenParser) │  │ (xgrammar)       │  │
+│  │ (vLLM)       │  │ (QwenParser) │  │ (optional)       │  │
 │  └──────────────┘  └──────────────┘  └──────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -55,24 +56,29 @@ The demo simulates a project coordinator that processes user requests and delega
 | `state.py` | `DemoState` dataclass holding tasks, risks, updates, and tool log |
 | `tools.py` | State management tools (`add_task`, `update_task_status`, `record_risk`, `log_update`) |
 | `subagents.py` | Subagent definitions (`task_planner`, `risk_analyst`) with memory and result capture |
-| `coordinator.py` | Builds the main agent with tools, subagents, and grammar constraints |
+| `coordinator.py` | Builds the main agent with tools, subagents, and optional constraints |
 | `runner.py` | Executes the demo with sample inputs and renders results |
 | `observer.py` | Event observer logging kernel, model, tool, and turn events |
 | `config.py` | API endpoint, model name, and grammar configuration |
 
 ### Grammar-Constrained Decoding
 
-The demo uses **structural tags** via xgrammar to constrain model output:
+The demo defaults to **native tool calling**. Grammar constraints are optional and only enabled if you set `GRAMMAR_CONFIG` to a `DecodingConstraint`.
 
 ```python
-GRAMMAR_CONFIG = DecodingConstraint(
-    strategy="structural_tag",
-    allow_parallel_calls=True,
-    send_tools_to_api=False,
-)
+from structured_agents.grammar.config import DecodingConstraint
+
+# Default: no constraints (native tool calling)
+GRAMMAR_CONFIG = None
+
+# Optional JSON schema constraints
+# GRAMMAR_CONFIG = DecodingConstraint(
+#     strategy="json_schema",
+#     schema_model=YourStructuredOutputModel,
+# )
 ```
 
-This ensures structured tool calls while allowing parallel execution.
+When enabled, the `ConstraintPipeline` attaches `structured_outputs` to the OpenAI-compatible request via `extra_body`.
 
 ### Subagent Pattern
 
@@ -126,12 +132,19 @@ asyncio.run(run_demo())
 from demo.ultimate_demo import build_demo_runner
 from demo.ultimate_demo.observer import DemoObserver
 
-runner = build_demo_runner(observer=DemoObserver())
-state = await runner.run([
-    "We need to add a QA review task for sprint 12.",
-    "Identify risks if our integration partner slips by two weeks.",
-])
-print(state.summary())
+import asyncio
+
+
+async def main() -> None:
+    runner = build_demo_runner(observer=DemoObserver())
+    state = await runner.run([
+        "We need to add a QA review task for sprint 12.",
+        "Identify risks if our integration partner slips by two weeks.",
+    ])
+    print(state.summary())
+
+
+asyncio.run(main())
 ```
 
 ### Sample Output
@@ -153,14 +166,14 @@ And produces structured state with:
 The `DemoObserver` prints events during execution:
 
 ```
-[kernel] start max_turns=10
+[kernel] start max_turns=20
 [model] request turn=1 tools=6
 [tool] call add_task
 [tool] result add_task status=ok
 [model] response turn=1 tools=1
 [turn] complete 1 calls=1 errors=0
 ...
-[kernel] end turns=4 reason=exhausted
+[kernel] end turns=4 reason=no_tool_calls
 ```
 
 ## Extending the Demo
