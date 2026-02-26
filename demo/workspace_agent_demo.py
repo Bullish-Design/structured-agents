@@ -520,7 +520,10 @@ async def section_4_grammar_modes(agent_dir: Path) -> None:
 
     modes = [
         ("ebnf", GrammarConfig(mode="ebnf", send_tools_to_api=False)),
-        ("structural_tag", GrammarConfig(mode="structural_tag")),
+        (
+            "structural_tag",
+            GrammarConfig(mode="structural_tag", send_tools_to_api=False),
+        ),
         ("json_schema", GrammarConfig(mode="json_schema")),
     ]
 

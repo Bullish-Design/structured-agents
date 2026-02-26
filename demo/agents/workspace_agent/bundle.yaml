@@ -38,5 +38,5 @@ registries:
   - type: "grail"
     config:
       agents_dir: "."
-      use_grail_check: false
+      use_grail_check: true
       cache_schemas: true
