@@ -22,6 +22,8 @@ class CompletionResponse:
 class LLMClient(Protocol):
     """Protocol for LLM API clients."""
 
+    model: str
+
     async def chat_completion(
         self,
         messages: list[dict[str, Any]],

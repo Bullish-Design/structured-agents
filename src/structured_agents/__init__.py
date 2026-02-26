@@ -9,9 +9,9 @@ from structured_agents.types import (
     StepResult,
     RunResult,
 )
-from structured_agents.tools import Tool, GrailTool
-from structured_agents.models import ModelAdapter, QwenResponseParser
-from structured_agents.grammar import DecodingConstraint, ConstraintPipeline
+from structured_agents.tools import Tool, GrailTool, discover_tools
+from structured_agents.models import ModelAdapter, ResponseParser, QwenResponseParser
+from structured_agents.grammar import DecodingConstraint
 from structured_agents.events import (
     Observer,
     NullObserver,
@@ -25,10 +25,17 @@ from structured_agents.events import (
     TurnCompleteEvent,
 )
 from structured_agents.kernel import AgentKernel
-from structured_agents.agent import Agent, AgentManifest
+from structured_agents.agent import Agent, AgentManifest, load_manifest
 from structured_agents.client import LLMClient, OpenAICompatibleClient, build_client
+from structured_agents.exceptions import (
+    StructuredAgentsError,
+    KernelError,
+    ToolExecutionError,
+    BundleError,
+    AdapterError,
+)
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     # Types
@@ -42,12 +49,13 @@ __all__ = [
     # Tools
     "Tool",
     "GrailTool",
+    "discover_tools",
     # Models
     "ModelAdapter",
+    "ResponseParser",
     "QwenResponseParser",
     # Grammar
     "DecodingConstraint",
-    "ConstraintPipeline",
     # Events
     "Observer",
     "NullObserver",
@@ -63,8 +71,15 @@ __all__ = [
     "AgentKernel",
     "Agent",
     "AgentManifest",
+    "load_manifest",
     # Client
     "LLMClient",
     "OpenAICompatibleClient",
     "build_client",
+    # Exceptions
+    "StructuredAgentsError",
+    "KernelError",
+    "ToolExecutionError",
+    "BundleError",
+    "AdapterError",
 ]

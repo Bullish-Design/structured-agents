@@ -2,20 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-
-# =============================================================================
-# Configuration
-
-
-class KernelConfig:
-    max_tokens: int = 4096
-    temperature: float = 0.1
-    tool_choice: str = "auto"
-    max_concurrency: int = 1
 
 
 # =============================================================================
@@ -78,15 +69,13 @@ class ToolCall:
     @property
     def arguments_json(self) -> str:
         """Arguments as JSON string."""
-        import json
-
         return json.dumps(self.arguments)
 
     @classmethod
     def create(cls, name: str, arguments: dict[str, Any]) -> "ToolCall":
         """Create a ToolCall with auto-generated ID."""
         return cls(
-            id=f"call_{uuid.uuid4().hex[:8]}",
+            id=f"call_{uuid.uuid4().hex[:12]}",
             name=name,
             arguments=arguments,
         )
@@ -100,11 +89,6 @@ class ToolResult:
     name: str
     output: str
     is_error: bool = False
-
-    @property
-    def output_str(self) -> str:
-        """Output as string."""
-        return self.output
 
     def to_message(self) -> Message:
         """Convert to a tool response message."""
@@ -128,9 +112,6 @@ class ToolSchema:
     name: str
     description: str
     parameters: dict[str, Any]
-    backend: str = "python"
-    script_path: Path | None = None
-    context_providers: tuple[Path, ...] = ()
 
     def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI tools array format."""
@@ -173,7 +154,7 @@ class StepResult:
     usage: TokenUsage | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RunResult:
     """Result of a full kernel run (multiple turns until termination)."""
 

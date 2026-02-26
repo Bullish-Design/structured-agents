@@ -10,7 +10,7 @@ from structured_agents.events.types import (
     ToolResultEvent,
     TurnCompleteEvent,
 )
-from structured_agents.events.observer import Observer, NullObserver
+from structured_agents.events.observer import Observer, NullObserver, CompositeObserver
 
 __all__ = [
     "Event",
@@ -23,4 +23,5 @@ __all__ = [
     "TurnCompleteEvent",
     "Observer",
     "NullObserver",
+    "CompositeObserver",
 ]

@@ -1,20 +1,34 @@
 """Agent - high-level entry point for structured-agents."""
 
 from __future__ import annotations
+import os
 from pathlib import Path
 from typing import Any
 from dataclasses import dataclass, field
 import yaml
 
-from structured_agents.client.protocol import LLMClient
-from structured_agents.client.factory import build_client
+from structured_agents.client import build_client
 from structured_agents.events.observer import NullObserver, Observer
 from structured_agents.grammar.config import DecodingConstraint
 from structured_agents.kernel import AgentKernel
 from structured_agents.models.adapter import ModelAdapter
-from structured_agents.models.parsers import QwenResponseParser
+from structured_agents.models.parsers import QwenResponseParser, ResponseParser
 from structured_agents.tools.grail import discover_tools
-from structured_agents.types import Message, RunResult, ToolSchema
+from structured_agents.types import Message, RunResult
+
+
+_ADAPTER_REGISTRY: dict[str, type[ResponseParser]] = {
+    "qwen": QwenResponseParser,
+    "function_gemma": QwenResponseParser,
+}
+
+
+def get_response_parser(model_name: str) -> ResponseParser:
+    """Look up the response parser for a model family."""
+    parser_cls = _ADAPTER_REGISTRY.get(model_name)
+    if parser_cls is None:
+        parser_cls = QwenResponseParser
+    return parser_cls()
 
 
 @dataclass
@@ -24,7 +38,7 @@ class AgentManifest:
     name: str
     system_prompt: str
     agents_dir: Path
-    limits: Any = None
+    limits: dict[str, Any] | None = None
     model: str = "qwen"
     grammar_config: DecodingConstraint | None = None
     max_turns: int = 20
@@ -39,13 +53,32 @@ def load_manifest(bundle_path: str | Path) -> AgentManifest:
     with open(path) as f:
         data = yaml.safe_load(f)
 
+    bundle_dir = path.parent
+
+    initial_context = data.get("initial_context", {})
+
+    model_config = data.get("model", "qwen")
+    if isinstance(model_config, dict):
+        model_name = model_config.get("plugin", "qwen")
+    else:
+        model_name = model_config
+
+    grammar_data = data.get("grammar", {})
+    grammar_config = None
+    if grammar_data:
+        grammar_config = DecodingConstraint(
+            strategy=grammar_data.get("strategy", "ebnf"),
+            allow_parallel_calls=grammar_data.get("allow_parallel_calls", False),
+            send_tools_to_api=grammar_data.get("send_tools_to_api", False),
+        )
+
     return AgentManifest(
         name=data.get("name", "unnamed"),
-        system_prompt=data.get("system_prompt", ""),
-        agents_dir=Path(bundle_path).parent / data.get("agents_dir", "agents"),
+        system_prompt=initial_context.get("system_prompt", ""),
+        agents_dir=bundle_dir / data.get("agents_dir", "agents"),
         limits=data.get("limits"),
-        model=data.get("model", "qwen"),
-        grammar_config=None,
+        model=model_name,
+        grammar_config=grammar_config,
         max_turns=data.get("max_turns", 20),
     )
 
@@ -64,33 +97,49 @@ class Agent:
         self.observer = observer or NullObserver()
 
     @classmethod
-    async def from_bundle(cls, path: str | Path, **overrides) -> "Agent":
+    async def from_bundle(
+        cls, path: str | Path, observer: Observer | None = None, **overrides
+    ) -> "Agent":
         """Load a bundle and construct a fully wired agent."""
         manifest = load_manifest(path)
 
+        for key, value in overrides.items():
+            if hasattr(manifest, key):
+                object.__setattr__(manifest, key, value)
+
         tools = discover_tools(str(manifest.agents_dir))
+
+        parser = get_response_parser(manifest.model)
 
         adapter = ModelAdapter(
             name=manifest.model,
-            grammar_builder=lambda t, c: None,
-            response_parser=QwenResponseParser(),
+            response_parser=parser,
+            grammar_builder=None,
+            grammar_config=manifest.grammar_config,
         )
+
+        base_url = os.environ.get(
+            "STRUCTURED_AGENTS_BASE_URL", "http://localhost:8000/v1"
+        )
+        api_key = os.environ.get("STRUCTURED_AGENTS_API_KEY", "EMPTY")
 
         client = build_client(
             {
                 "model": manifest.model,
-                "base_url": "http://localhost:8000/v1",
-                "api_key": "EMPTY",
+                "base_url": base_url,
+                "api_key": api_key,
             }
         )
 
+        obs = observer or NullObserver()
         kernel = AgentKernel(
             client=client,
             adapter=adapter,
-            tools=tools,
+            tools=tools,  # type: ignore[arg-type]
+            observer=obs,
         )
 
-        return cls(kernel, manifest)
+        return cls(kernel, manifest, observer=obs)
 
     async def run(self, user_input: str, **kwargs) -> RunResult:
         """Run the agent with a user message."""

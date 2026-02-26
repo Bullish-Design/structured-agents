@@ -7,6 +7,8 @@ from structured_agents.tools.grail import GrailTool
 
 @pytest.mark.asyncio
 async def test_grail_tool_execute():
+    from structured_agents.types import ToolCall
+
     mock_script = MagicMock()
     mock_script.name = "test_tool"
     mock_script.run = AsyncMock(return_value={"result": 42})
@@ -15,9 +17,8 @@ async def test_grail_tool_execute():
 
     assert tool.schema.name == "test_tool"
 
-    class MockContext:
-        call_id = "call_123"
+    context = ToolCall(id="call_123", name="test_tool", arguments={"a": 1})
 
-    result = await tool.execute({"a": 1}, MockContext())
+    result = await tool.execute({"a": 1}, context)
     assert result.is_error == False
     assert "42" in result.output

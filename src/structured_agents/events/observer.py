@@ -16,3 +16,14 @@ class NullObserver:
 
     async def emit(self, event: Event) -> None:
         pass
+
+
+class CompositeObserver:
+    """Fan out events to multiple observers."""
+
+    def __init__(self, observers: list[Observer]) -> None:
+        self._observers = observers
+
+    async def emit(self, event: Event) -> None:
+        for observer in self._observers:
+            await observer.emit(event)

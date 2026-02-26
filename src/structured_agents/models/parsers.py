@@ -26,21 +26,24 @@ class QwenResponseParser:
             for tc in tool_calls:
                 if isinstance(tc, dict) and "function" in tc:
                     func = tc["function"]
-                    args = json.loads(func.get("arguments", "{}"))
-                    parsed.append(ToolCall.create(func["name"], args))
+                    try:
+                        args = json.loads(func.get("arguments", "{}"))
+                    except json.JSONDecodeError:
+                        args = {}
+                    parsed.append(
+                        ToolCall(id=tc["id"], name=func["name"], arguments=args)
+                    )
             return None, parsed
 
-        # Try to parse XML-style tool calls from content
         if content:
-            tool_calls = self._parse_xml_tool_calls(content)
-            if tool_calls:
-                return None, tool_calls
+            parsed_xml_calls = self._parse_xml_tool_calls(content)
+            if parsed_xml_calls:
+                return None, parsed_xml_calls
 
         return content, []
 
     def _parse_xml_tool_calls(self, content: str) -> list[ToolCall]:
         """Parse XML-style tool calls from content."""
-        # Pattern: <tool_call>{...}</tool_call>
         pattern = r"<tool_call>(.*?)</tool_call>"
 
         tool_calls = []
@@ -58,13 +61,3 @@ class QwenResponseParser:
                 pass
 
         return tool_calls
-
-
-class FunctionGemmaResponseParser:
-    """Parser for FunctionGemma models."""
-
-    def parse(
-        self, content: str | None, tool_calls: list[dict[str, Any]] | None
-    ) -> tuple[str | None, list[ToolCall]]:
-        # Similar to Qwen but handles structural tags differently
-        return QwenResponseParser().parse(content, tool_calls)

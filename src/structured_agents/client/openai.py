@@ -38,15 +38,19 @@ class OpenAICompatibleClient:
         model: str | None = None,
     ) -> CompletionResponse:
         """Make a chat completion request."""
-        response = await self._client.chat.completions.create(
-            model=model or self.model,
-            messages=messages,
-            tools=tools,
-            tool_choice=tool_choice,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            extra_body=extra_body,
-        )
+        kwargs: dict[str, Any] = {
+            "model": model or self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if tools is not None:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = tool_choice
+        if extra_body is not None:
+            kwargs["extra_body"] = extra_body
+
+        response = await self._client.chat.completions.create(**kwargs)
 
         choice = response.choices[0]
         message = choice.message
@@ -79,14 +83,14 @@ class OpenAICompatibleClient:
             tool_calls=tool_calls,
             usage=usage,
             finish_reason=choice.finish_reason,
-            raw_response=response.to_dict(),
+            raw_response=response.model_dump(),
         )
 
     async def close(self) -> None:
         await self._client.close()
 
 
-def build_client(config: dict[str, Any]) -> LLMClient:
+def build_client(config: dict[str, Any]) -> OpenAICompatibleClient:
     """Build an LLM client from config dict."""
     return OpenAICompatibleClient(
         base_url=config.get("base_url", "http://localhost:8000/v1"),

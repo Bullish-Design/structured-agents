@@ -26,11 +26,10 @@ def test_model_adapter_creation():
 def test_model_adapter_format_messages_default():
     adapter = ModelAdapter(
         name="test",
-        grammar_builder=lambda t, c: None,
         response_parser=MockParser(),
     )
     from structured_agents.types import Message
 
     msg = Message(role="user", content="hello")
-    result = adapter.format_messages([msg], [])
+    result = adapter.format_messages([msg])  # type: ignore[call-arg]
     assert result[0]["role"] == "user"

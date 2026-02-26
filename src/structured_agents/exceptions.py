@@ -34,13 +34,9 @@ class ToolExecutionError(StructuredAgentsError):
         self.code = code
 
 
-class PluginError(StructuredAgentsError):
-    """Error in model plugin (parsing, formatting, etc.)."""
-
-
 class BundleError(StructuredAgentsError):
     """Error loading or validating a bundle."""
 
 
-class BackendError(StructuredAgentsError):
-    """Error in tool backend."""
+class AdapterError(StructuredAgentsError):
+    """Error in model adapter (parsing, formatting, etc.)."""
