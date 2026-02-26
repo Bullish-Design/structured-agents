@@ -7,47 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
-
-
 # =============================================================================
 # Configuration
-# =============================================================================
 
 
-class ToolExecutionStrategy(BaseModel):
-    """Tool execution strategy for the kernel."""
-
-    mode: Literal["concurrent", "sequential"] = Field(
-        default="concurrent", description="Execution mode for tool calls"
-    )
-    max_concurrency: int = Field(
-        default=10,
-        ge=1,
-        description="Maximum number of concurrent tool calls",
-    )
-
-
-class KernelConfig(BaseModel):
-    """Configuration for the AgentKernel."""
-
-    base_url: str = Field(
-        description="vLLM server URL (e.g., http://localhost:8000/v1)"
-    )
-    model: str = Field(description="Model name or adapter to use")
-    api_key: str = Field(
-        default="EMPTY", description="API key (usually EMPTY for local vLLM)"
-    )
-    timeout: float = Field(default=120.0, description="Request timeout in seconds")
-    max_tokens: int = Field(default=4096, description="Maximum tokens per completion")
-    temperature: float = Field(default=0.1, description="Sampling temperature")
-    tool_choice: str = Field(
-        default="auto", description="Tool choice strategy: auto, required, none"
-    )
-    tool_execution_strategy: ToolExecutionStrategy = Field(
-        default_factory=ToolExecutionStrategy,
-        description="Execution strategy for tool calls",
-    )
+class KernelConfig:
+    max_tokens: int = 4096
+    temperature: float = 0.1
+    tool_choice: str = "auto"
+    max_concurrency: int = 1
 
 
 # =============================================================================

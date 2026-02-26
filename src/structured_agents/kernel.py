@@ -164,10 +164,28 @@ class AgentKernel:
                 messages.append(result.to_message())
 
             if not step_result.tool_calls:
-                termination_reason = "no_tool_calls"
-                break
-
-            if step_result.tool_results:
+                # TODO: Termination reason naming is ambiguous.
+                #
+                # Issue: "no_tool_calls" is misleading because:
+                #   - It could mean "no tools were ever called" (never made any tool calls)
+                #   - It actually means "model stopped making tool calls" (completed tool use)
+                #
+                # Option 1 - Clearer naming:
+                #   - "text_response"     = model returned text without calling tools
+                #   - "tools_exhausted"   = model called tools until done, then returned text
+                #   - "max_turns"         = hit turn limit
+                #   - "error"             = encountered an error
+                #
+                # Option 2 - Add metadata to RunResult:
+                #   - Add field like `tools_called_count: int` to TrackResult
+                #   - Or add `had_tool_calls: bool` to RunResult
+                #   - Then caller can distinguish:
+                #       if result.termination_reason == "no_tool_calls" and result.tools_called_count > 0:
+                #           # Successfully called tools until done
+                #
+                # For now, current behavior is:
+                #   - "no_tool_calls" means model returned text (either never called tools OR finished calling them)
+                #   - This is the standard pattern: agent loop continues until model stops making tool calls
                 termination_reason = "no_tool_calls"
                 break
 

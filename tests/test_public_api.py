@@ -20,28 +20,32 @@ def test_version_exists() -> None:
 def test_core_classes_importable() -> None:
     from structured_agents import (
         AgentKernel,
-        FunctionGemmaPlugin,
-        KernelConfig,
+        Agent,
+        AgentManifest,
+        ModelAdapter,
         Message,
-        PythonBackend,
-        RegistryBackendToolSource,
         ToolCall,
         ToolResult,
         ToolSchema,
-        ToolSource,
+        TokenUsage,
+        StepResult,
+        RunResult,
         build_client,
-        load_bundle,
+        LLMClient,
+        OpenAICompatibleClient,
     )
 
-    assert KernelConfig.__name__ == "KernelConfig"
     assert AgentKernel.__name__ == "AgentKernel"
+    assert Agent.__name__ == "Agent"
+    assert AgentManifest.__name__ == "AgentManifest"
+    assert ModelAdapter.__name__ == "ModelAdapter"
+    assert Message.__name__ == "Message"
     assert ToolCall.__name__ == "ToolCall"
     assert ToolResult.__name__ == "ToolResult"
     assert ToolSchema.__name__ == "ToolSchema"
-    assert FunctionGemmaPlugin.__name__ == "FunctionGemmaPlugin"
-    assert PythonBackend.__name__ == "PythonBackend"
-    assert RegistryBackendToolSource.__name__ == "RegistryBackendToolSource"
-    assert ToolSource.__name__ == "ToolSource"
-    assert Message.__name__ == "Message"
+    assert TokenUsage.__name__ == "TokenUsage"
+    assert StepResult.__name__ == "StepResult"
+    assert RunResult.__name__ == "RunResult"
     assert build_client.__name__ == "build_client"
-    assert load_bundle.__name__ == "load_bundle"
+    assert LLMClient.__name__ == "LLMClient"
+    assert OpenAICompatibleClient.__name__ == "OpenAICompatibleClient"

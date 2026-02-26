@@ -1,0 +1,16 @@
+{
+  "inputs": [
+    {
+      "name": "text",
+      "type": "str",
+      "required": true,
+      "default": null
+    },
+    {
+      "name": "max_length",
+      "type": "int",
+      "required": false,
+      "default": 100
+    }
+  ]
+}
