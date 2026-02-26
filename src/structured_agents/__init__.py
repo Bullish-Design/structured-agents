@@ -1,115 +1,52 @@
-"""structured-agents: Structured tool orchestration with grammar-constrained LLM outputs."""
+"""structured-agents - Structured tool orchestration with grammar-constrained LLM outputs."""
 
-from structured_agents.deps import require_xgrammar_and_vllm
-
-require_xgrammar_and_vllm()
-
-from structured_agents.backends import (
-    CompositeBackend,
-    GrailBackend,
-    GrailBackendConfig,
-    PythonBackend,
-    ToolBackend,
-)
-from structured_agents.bundles import AgentBundle, load_bundle
-from structured_agents.client import (
-    CompletionResponse,
-    LLMClient,
-    OpenAICompatibleClient,
-    build_client,
-)
-from structured_agents.exceptions import (
-    BackendError,
-    BundleError,
-    KernelError,
-    PluginError,
-    StructuredAgentsError,
-    ToolExecutionError,
-)
-from structured_agents.history import (
-    HistoryStrategy,
-    KeepAllHistory,
-    SlidingWindowHistory,
-)
-from structured_agents.kernel import AgentKernel
-from structured_agents.observer import (
-    CompositeObserver,
-    KernelEndEvent,
-    KernelStartEvent,
-    ModelRequestEvent,
-    ModelResponseEvent,
-    NullObserver,
-    Observer,
-    ToolCallEvent,
-    ToolResultEvent,
-    TurnCompleteEvent,
-)
-from structured_agents.plugins import FunctionGemmaPlugin, ModelPlugin, QwenPlugin
-from structured_agents.tool_sources import (
-    ContextProvider,
-    RegistryBackendToolSource,
-    ToolSource,
-)
 from structured_agents.types import (
-    KernelConfig,
     Message,
-    RunResult,
-    StepResult,
-    TokenUsage,
     ToolCall,
-    ToolExecutionStrategy,
     ToolResult,
     ToolSchema,
+    TokenUsage,
+    StepResult,
+    RunResult,
 )
+from structured_agents.tools import Tool, GrailTool
+from structured_agents.models import ModelAdapter, QwenResponseParser
+from structured_agents.grammar import DecodingConstraint, ConstraintPipeline
+from structured_agents.events import Observer, NullObserver, Event
+from structured_agents.kernel import AgentKernel
+from structured_agents.agent import Agent, AgentManifest
+from structured_agents.client import LLMClient, OpenAICompatibleClient, build_client
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
-    "__version__",
-    "AgentKernel",
-    "KernelConfig",
+    # Types
     "Message",
     "ToolCall",
-    "ToolExecutionStrategy",
     "ToolResult",
     "ToolSchema",
+    "TokenUsage",
     "StepResult",
     "RunResult",
-    "TokenUsage",
-    "ModelPlugin",
-    "FunctionGemmaPlugin",
-    "QwenPlugin",
-    "ToolBackend",
-    "PythonBackend",
-    "CompositeBackend",
-    "GrailBackend",
-    "GrailBackendConfig",
-    "ToolSource",
-    "RegistryBackendToolSource",
-    "ContextProvider",
-    "AgentBundle",
-    "load_bundle",
+    # Tools
+    "Tool",
+    "GrailTool",
+    # Models
+    "ModelAdapter",
+    "QwenResponseParser",
+    # Grammar
+    "DecodingConstraint",
+    "ConstraintPipeline",
+    # Events
     "Observer",
     "NullObserver",
-    "CompositeObserver",
-    "KernelStartEvent",
-    "KernelEndEvent",
-    "ModelRequestEvent",
-    "ModelResponseEvent",
-    "ToolCallEvent",
-    "ToolResultEvent",
-    "TurnCompleteEvent",
-    "HistoryStrategy",
-    "SlidingWindowHistory",
-    "KeepAllHistory",
+    "Event",
+    # Core
+    "AgentKernel",
+    "Agent",
+    "AgentManifest",
+    # Client
     "LLMClient",
     "OpenAICompatibleClient",
     "build_client",
-    "CompletionResponse",
-    "StructuredAgentsError",
-    "KernelError",
-    "ToolExecutionError",
-    "PluginError",
-    "BundleError",
-    "BackendError",
 ]
