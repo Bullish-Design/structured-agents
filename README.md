@@ -1,13 +1,15 @@
 # structured-agents
 
-Structured tool orchestration with grammar-constrained LLM outputs. `structured-agents` provides a focused, composable agent loop that integrates model calls, tool execution, and observable events without taking over workspace or multi-agent coordination.
+Structured tool orchestration with native tool calling and optional structured outputs.
+`structured-agents` provides a focused, composable agent loop that integrates model calls, tool execution, and observable events without taking over workspace or multi-agent coordination.
 
 ## What This Library Is
 
 - A minimal, reusable agent kernel for tool-calling workflows.
-- A structured output pipeline that supports grammar-constrained decoding via XGrammar.
-- A toolkit for bundling tools, prompts, and model configuration.
-- A clean integration layer for Grail `.pym` tools and Python tool backends.
+- A model adapter layer that formats requests and parses tool calls.
+- A tool protocol for integrating Python tools or Grail `.pym` tools.
+- An optional structured output pipeline for JSON schema constraints.
+- An event system for diagnostics and observability.
 
 ## What This Library Is Not
 
@@ -21,59 +23,79 @@ Structured tool orchestration with grammar-constrained LLM outputs. `structured-
 pip install structured-agents
 ```
 
-`structured-agents` expects an OpenAI-compatible API (vLLM, etc.) and the XGrammar runtime for grammar-constrained decoding. Grail is required if you execute `.pym` tools.
+Python 3.13+ is required. Optional extras:
+
+```bash
+pip install "structured-agents[grammar]"   # xgrammar structured outputs
+pip install "structured-agents[vllm]"      # vLLM client/server compatibility
+```
+
+`structured-agents` expects an OpenAI-compatible API (vLLM, etc.). Grammar-constrained decoding is optional and relies on XGrammar when enabled. Grail is required if you execute `.pym` tools.
 
 ## Quick Start
 
 ```python
 import asyncio
+from dataclasses import dataclass
+from typing import Any
 
 from structured_agents import (
     AgentKernel,
-    FunctionGemmaPlugin,
-    KernelConfig,
     Message,
+    ModelAdapter,
+    QwenResponseParser,
+    ToolCall,
+    ToolResult,
     ToolSchema,
 )
-from structured_agents.backends import PythonBackend
-from structured_agents.registries import PythonRegistry
-from structured_agents.tool_sources import RegistryBackendToolSource
+from structured_agents.client import build_client
+from structured_agents.tools.protocol import Tool
+
+
+@dataclass
+class GreetTool(Tool):
+    @property
+    def schema(self) -> ToolSchema:
+        return ToolSchema(
+            name="greet",
+            description="Greet someone",
+            parameters={
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"],
+            },
+        )
+
+    async def execute(
+        self, arguments: dict[str, Any], context: ToolCall | None
+    ) -> ToolResult:
+        name = arguments.get("name", "there")
+        return ToolResult(
+            call_id=context.id if context else "",
+            name=self.schema.name,
+            output=f"Hello, {name}!",
+            is_error=False,
+        )
 
 
 async def main() -> None:
-    config = KernelConfig(
-        base_url="http://localhost:8000/v1",
-        model="google/functiongemma-270m-it",
+    tools = [GreetTool()]
+    tool_schemas = [tool.schema for tool in tools]
+
+    client = build_client(
+        {
+            "base_url": "http://localhost:8000/v1",
+            "api_key": "EMPTY",
+            "model": "Qwen/Qwen3-4B-Instruct-2507-FP8",
+        }
     )
 
-    registry = PythonRegistry()
-    backend = PythonBackend(registry=registry)
-
-    async def greet(name: str) -> str:
-        return f"Hello, {name}!"
-
-    backend.register("greet", greet)
-    tool_source = RegistryBackendToolSource(registry, backend)
-
-    kernel = AgentKernel(
-        config=config,
-        plugin=FunctionGemmaPlugin(),
-        tool_source=tool_source,
-    )
+    adapter = ModelAdapter(name="qwen", response_parser=QwenResponseParser())
+    kernel = AgentKernel(client=client, adapter=adapter, tools=tools)
 
     result = await kernel.run(
-        initial_messages=[Message(role="user", content="Greet Alice")],
-        tools=[
-            ToolSchema(
-                name="greet",
-                description="Greet someone",
-                parameters={
-                    "type": "object",
-                    "properties": {"name": {"type": "string"}},
-                    "required": ["name"],
-                },
-            )
-        ],
+        [Message(role="user", content="Greet Alice")],
+        tool_schemas,
         max_turns=3,
     )
 
@@ -85,103 +107,73 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Tool Sources
+## Optional Structured Outputs
 
-`AgentKernel` requires a `ToolSource`. The default bridge is `RegistryBackendToolSource`, which combines a tool registry with an execution backend.
-
-```python
-from structured_agents.backends import GrailBackend, GrailBackendConfig
-from structured_agents.registries import GrailRegistry, GrailRegistryConfig
-from structured_agents.tool_sources import RegistryBackendToolSource
-
-registry = GrailRegistry(GrailRegistryConfig(agents_dir="./agents"))
-backend = GrailBackend(GrailBackendConfig(grail_dir="./agents"))
-source = RegistryBackendToolSource(registry, backend)
-```
-
-## Parallel Tool Execution
-
-Tool calls execute concurrently by default. Configure the strategy on `KernelConfig` if you need sequential execution or lower concurrency.
+Native tool calling is the default. If you want JSON schema-constrained outputs, attach a `ConstraintPipeline` with a `DecodingConstraint` and a `StructuredOutputModel`. Constraints are only attached when tool schemas are provided to the kernel.
 
 ```python
-from structured_agents import KernelConfig, ToolExecutionStrategy
+from structured_agents import DecodingConstraint, StructuredOutputModel
+from structured_agents.grammar.pipeline import ConstraintPipeline
 
-config = KernelConfig(
-    base_url="http://localhost:8000/v1",
-    model="google/functiongemma-270m-it",
-    tool_execution_strategy=ToolExecutionStrategy(mode="sequential", max_concurrency=1),
+
+class StatusOutput(StructuredOutputModel):
+    status: str
+    detail: str
+
+
+constraint = DecodingConstraint(strategy="json_schema", schema_model=StatusOutput)
+adapter = ModelAdapter(
+    name="qwen",
+    response_parser=QwenResponseParser(),
+    constraint_pipeline=ConstraintPipeline(constraint),
 )
 ```
 
-## Bundles
+When a constraint pipeline is present, the kernel attaches `structured_outputs` to the OpenAI-compatible request via `extra_body`.
 
-Bundles package prompts, tool definitions, and model configuration into a directory with a `bundle.yaml`.
+## Kernel Configuration
 
-```yaml
-name: "docstring_writer"
-model:
-  plugin: "function_gemma"
-  grammar:
-    mode: "json_schema"
-initial_context:
-  system_prompt: "You are a docstring agent."
-  user_template: "{{ input }}"
-tools:
-  - name: "read_file"
-    registry: "grail"
-  - name: "submit_result"
-    registry: "grail"
-registries:
-  - type: "grail"
-    config:
-      agents_dir: "tools"
-```
+`AgentKernel` exposes runtime settings such as:
 
-```python
-from structured_agents import load_bundle
-from structured_agents.backends import GrailBackend, GrailBackendConfig
+- `max_tokens`
+- `temperature`
+- `max_concurrency`
+- `max_history_messages`
 
-bundle = load_bundle("./bundles/docstring_writer")
-plugin = bundle.get_plugin()
-messages = bundle.build_initial_messages({"input": "Add a docstring"})
-backend = GrailBackend(GrailBackendConfig(grail_dir="./tools"))
-source = bundle.build_tool_source(backend)
-```
-
-## Client Reuse
-
-Use the client factory if you want to drive model calls directly while reusing `KernelConfig`.
-
-```python
-from structured_agents import KernelConfig
-from structured_agents.client import build_client
-
-config = KernelConfig(base_url="http://localhost:8000/v1", model="test")
-client = build_client(config)
-```
+These are passed directly to the OpenAI-compatible API where applicable.
 
 ## Observability
 
 The kernel emits events during execution. Observers can stream logs, drive TUIs, or capture telemetry.
 
 ```python
-from structured_agents import CompositeObserver, NullObserver
+from structured_agents.events import CompositeObserver, NullObserver
 
 observer = CompositeObserver([NullObserver()])
 ```
 
+## Documentation
+
+- `HOW_TO_USE_STRUCTURED_AGENTS.md`
+- `ARCHITECTURE.md`
+- `GRAMMAR_INTEGRATION_REPORT.md`
+- `V033_GRAMMAR_REFACTORING_GUIDE.md`
+- `STRUCTURAL_TAG_VLLM_ERROR.md`
+
 ## API Overview
 
 - `AgentKernel`: core agent loop and lifecycle.
-- `ToolSource`: unified tool discovery + execution interface.
-- `ToolExecutionStrategy`: controls sequential vs concurrent tool calls.
-- `ModelPlugin`: composed plugin that formats messages/tools and parses responses.
-- `AgentBundle`: bundle loader and tool schema generator.
+- `ModelAdapter`: model-specific formatting and response parsing.
+- `Tool`: protocol for tool schema + execution.
+- `DecodingConstraint`: optional grammar configuration.
+- `ConstraintPipeline`: builds structured output payloads.
+- `StructuredOutputModel`: Pydantic base class for JSON schema outputs.
 - `Observer`: event hooks for external integrations.
+- `build_client`: OpenAI-compatible client factory.
 
 ## Project Status
 
-The library is actively evolving. The API is stable for the core agent loop, but new plugins/backends may be added.
+The library is actively evolving. The core agent loop and tool calling APIs are stable; optional structured output features may evolve as backend support improves.
 
 ## License
 
