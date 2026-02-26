@@ -16,7 +16,7 @@ grammar = [
     "xgrammar==0.1.29",
 ]
 vllm = [
-    "vllm>=0.15.1",
+    "vllm==0.15.1",
 ]
 dev = [
     "pytest>=8.0",
