@@ -5,23 +5,14 @@ from typing import Any
 
 from structured_agents.client import build_client
 from structured_agents.events.observer import NullObserver, Observer
-from structured_agents.grammar.pipeline import (
-    ConstraintPipeline,
-    build_structural_tag_constraint,
-)
+from structured_agents.grammar.pipeline import ConstraintPipeline
 from structured_agents.kernel import AgentKernel
 from structured_agents.models.adapter import ModelAdapter
 from structured_agents.models.parsers import QwenResponseParser
 from structured_agents.tools.protocol import Tool
 from structured_agents.types import Message, ToolCall, ToolResult, ToolSchema
 
-from demo.ultimate_demo.config import (
-    API_KEY,
-    BASE_URL,
-    DISABLE_GRAMMAR,
-    GRAMMAR_CONFIG,
-    MODEL_NAME,
-)
+from demo.ultimate_demo.config import API_KEY, BASE_URL, GRAMMAR_CONFIG, MODEL_NAME
 from demo.ultimate_demo.state import DemoState, RiskItem
 
 
@@ -238,22 +229,14 @@ def build_subagent_tools(
 
 
 def _build_subagent_kernel(tools: list[Tool], observer: Observer | None) -> AgentKernel:
-    if DISABLE_GRAMMAR:
-        adapter = ModelAdapter(
-            name="qwen",
-            response_parser=QwenResponseParser(),
-            constraint_pipeline=None,
-        )
-    else:
-        pipeline = ConstraintPipeline(
-            builder=build_structural_tag_constraint,
-            config=GRAMMAR_CONFIG,
-        )
-        adapter = ModelAdapter(
-            name="qwen",
-            response_parser=QwenResponseParser(),
-            constraint_pipeline=pipeline,
-        )
+    pipeline = (
+        ConstraintPipeline(GRAMMAR_CONFIG) if GRAMMAR_CONFIG is not None else None
+    )
+    adapter = ModelAdapter(
+        name="qwen",
+        response_parser=QwenResponseParser(),
+        constraint_pipeline=pipeline,
+    )
     client = build_client(
         {
             "base_url": BASE_URL,

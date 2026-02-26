@@ -13,10 +13,7 @@ class MockParser:
 
 
 def test_model_adapter_creation():
-    pipeline = ConstraintPipeline(
-        lambda tools, config: {"grammar": "test"},
-        DecodingConstraint(),
-    )
+    pipeline = ConstraintPipeline(DecodingConstraint())
     adapter = ModelAdapter(
         name="test_model",
         response_parser=MockParser(),

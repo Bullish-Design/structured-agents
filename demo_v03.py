@@ -18,10 +18,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from structured_agents.grammar.pipeline import (
-    ConstraintPipeline,
-    build_structural_tag_constraint,
-)
+from structured_agents.grammar.pipeline import ConstraintPipeline
 
 # =============================================================================
 # IMPORTS - All v0.3.0 Core Concepts
@@ -44,6 +41,8 @@ from structured_agents import (
     QwenResponseParser,
     # Grammar
     DecodingConstraint,
+    StructuredOutputModel,
+    StructuredOutputModel,
     # Events
     Observer,
     NullObserver,
@@ -149,27 +148,13 @@ class DemoModelAdapter(ModelAdapter):
 
     def __init__(self, name: str = "qwen"):
         pipeline = ConstraintPipeline(
-            builder=self._build_grammar,
-            config=DecodingConstraint(
-                strategy="structural_tag", allow_parallel_calls=True
-            ),
+            DecodingConstraint(strategy="structural_tag", allow_parallel_calls=True)
         )
         super().__init__(
             name=name,
             response_parser=QwenResponseParser(),
             constraint_pipeline=pipeline,
         )
-
-    @staticmethod
-    def _build_grammar(
-        tools: list[ToolSchema], config: DecodingConstraint
-    ) -> dict | None:
-        """Build grammar constraint for tool calls."""
-        if not tools:
-            return None
-
-        print(f"  [GRAMMAR BUILDER] Building constraint for {len(tools)} tools")
-        return build_structural_tag_constraint(tools, config)
 
 
 # =============================================================================
@@ -362,27 +347,25 @@ def demo_grammar_pipeline():
     print("DEMO 4: Grammar/Constraint Pipeline")
     print("=" * 60)
 
-    # Create decoding constraint
+    class SimpleStructuredOutput(StructuredOutputModel):
+        value: int
+        note: str
+
     constraint = DecodingConstraint(
-        strategy="ebnf",
+        strategy="json_schema",
         allow_parallel_calls=False,
         send_tools_to_api=False,
+        schema_model=SimpleStructuredOutput,
+    )
+    schema_name = (
+        constraint.schema_model.__name__ if constraint.schema_model else "None"
     )
     print(f"\n[DecodingConstraint]")
     print(f"  strategy: {constraint.strategy}")
-    print(f"  allow_parallel_calls: {constraint.allow_parallel_calls}")
-    print(f"  send_tools_to_api: {constraint.send_tools_to_api}")
+    print(f"  schema_model: {schema_name}")
 
-    # Create pipeline with builder
-    def grammar_builder(tools: list[ToolSchema], config: DecodingConstraint | None):
-        if not tools:
-            return None
-        # In production, this would use xgrammar to build EBNF
-        return {"grammar_mode": "ebnf", "tools": [t.name for t in tools]}
+    pipeline = ConstraintPipeline(constraint)
 
-    pipeline = ConstraintPipeline(builder=grammar_builder, config=constraint)
-
-    # Use pipeline
     tools = [
         ToolSchema(
             name="add", description="Add two numbers", parameters={"type": "object"}
@@ -395,12 +378,21 @@ def demo_grammar_pipeline():
     ]
 
     result = pipeline.constrain(tools)
-    print(f"\n[ConstraintPipeline]")
-    print(f"  Result: {result}")
+    print(f"\n[ConstraintPipeline JSON]")
+    print(f"  Result keys: {list(result.keys()) if result else None}")
 
-    # Empty tools case
     empty_result = pipeline.constrain([])
     print(f"  Empty tools result: {empty_result}")
+
+    structural_constraint = DecodingConstraint(
+        strategy="structural_tag", allow_parallel_calls=True
+    )
+    structural_pipeline = ConstraintPipeline(structural_constraint)
+    structural_result = structural_pipeline.constrain(tools)
+    print(f"\n[ConstraintPipeline Structural Tag]")
+    print(
+        f"  Result keys: {list(structural_result['structured_outputs'].keys()) if structural_result else None}"
+    )
 
     return pipeline
 

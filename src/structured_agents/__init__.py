@@ -11,7 +11,7 @@ from structured_agents.types import (
 )
 from structured_agents.tools import Tool, GrailTool, discover_tools
 from structured_agents.models import ModelAdapter, ResponseParser, QwenResponseParser
-from structured_agents.grammar import DecodingConstraint
+from structured_agents.grammar import DecodingConstraint, StructuredOutputModel
 from structured_agents.events import (
     Observer,
     NullObserver,
@@ -56,6 +56,7 @@ __all__ = [
     "QwenResponseParser",
     # Grammar
     "DecodingConstraint",
+    "StructuredOutputModel",
     # Events
     "Observer",
     "NullObserver",

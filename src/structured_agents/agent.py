@@ -10,10 +10,7 @@ import yaml
 from structured_agents.client import build_client
 from structured_agents.events.observer import NullObserver, Observer
 from structured_agents.grammar.config import DecodingConstraint
-from structured_agents.grammar.pipeline import (
-    ConstraintPipeline,
-    build_structural_tag_constraint,
-)
+from structured_agents.grammar.pipeline import ConstraintPipeline
 from structured_agents.kernel import AgentKernel
 from structured_agents.models.adapter import ModelAdapter
 from structured_agents.models.parsers import QwenResponseParser, ResponseParser
@@ -116,9 +113,7 @@ class Agent:
         parser = get_response_parser(manifest.model)
 
         pipeline = (
-            ConstraintPipeline(
-                builder=build_structural_tag_constraint, config=manifest.grammar_config
-            )
+            ConstraintPipeline(manifest.grammar_config)
             if manifest.grammar_config
             else None
         )
