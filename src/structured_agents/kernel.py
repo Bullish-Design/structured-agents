@@ -38,7 +38,7 @@ class AgentKernel:
 
     client: LLMClient
     adapter: ModelAdapter
-    tools: list[Tool] = field(default_factory=list)
+    tools: Sequence[Tool] = field(default_factory=list)
     observer: Observer = field(default_factory=NullObserver)
     max_history_messages: int = 50
     max_concurrency: int = 1
@@ -56,7 +56,7 @@ class AgentKernel:
         turn: int = 0,
     ) -> StepResult:
         """Execute a single turn: model call + tool execution."""
-        resolved_tools = []
+        resolved_tools: list[ToolSchema] = []
         for t in tools:
             if isinstance(t, ToolSchema):
                 resolved_tools.append(t)
@@ -75,9 +75,9 @@ class AgentKernel:
             formatted_tools = None
 
         grammar_constraint = None
-        if self.adapter.grammar_builder:
-            grammar_constraint = self.adapter.grammar_builder(
-                resolved_tools, self.adapter.grammar_config
+        if self.adapter.constraint_pipeline:
+            grammar_constraint = self.adapter.constraint_pipeline.constrain(
+                resolved_tools
             )
 
         extra_body = grammar_constraint

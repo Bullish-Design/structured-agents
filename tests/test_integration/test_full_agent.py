@@ -66,7 +66,6 @@ async def test_full_agent_loop():
 
     adapter = ModelAdapter(
         name="test",
-        grammar_builder=lambda t, c: None,
         response_parser=QwenResponseParser(),
     )
 

@@ -18,6 +18,11 @@ import asyncio
 import json
 from pathlib import Path
 
+from structured_agents.grammar.pipeline import (
+    ConstraintPipeline,
+    build_structural_tag_constraint,
+)
+
 # =============================================================================
 # IMPORTS - All v0.3.0 Core Concepts
 # =============================================================================
@@ -39,7 +44,6 @@ from structured_agents import (
     QwenResponseParser,
     # Grammar
     DecodingConstraint,
-    ConstraintPipeline,
     # Events
     Observer,
     NullObserver,
@@ -144,59 +148,28 @@ class DemoModelAdapter(ModelAdapter):
     """Custom adapter that demonstrates model-specific behavior."""
 
     def __init__(self, name: str = "qwen"):
+        pipeline = ConstraintPipeline(
+            builder=self._build_grammar,
+            config=DecodingConstraint(
+                strategy="structural_tag", allow_parallel_calls=True
+            ),
+        )
         super().__init__(
             name=name,
-            grammar_builder=self._build_grammar,
             response_parser=QwenResponseParser(),
+            constraint_pipeline=pipeline,
         )
 
     @staticmethod
     def _build_grammar(
-        tools: list[ToolSchema], config: DecodingConstraint | None
+        tools: list[ToolSchema], config: DecodingConstraint
     ) -> dict | None:
         """Build grammar constraint for tool calls."""
         if not tools:
             return None
 
-        # For this demo, we'll send tools to API without grammar constraint
-        # In production, you'd use xgrammar to build EBNF grammar
         print(f"  [GRAMMAR BUILDER] Building constraint for {len(tools)} tools")
-        return None  # Using default tool calling
-
-    @staticmethod
-    def _default_format_messages(
-        messages: list[Message], tools: list[dict]
-    ) -> list[dict]:
-        """Format messages for the model."""
-        result = []
-        for msg in messages:
-            msg_dict = {"role": msg.role, "content": msg.content}
-            if msg.tool_calls:
-                msg_dict["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.name,
-                            "arguments": json.dumps(tc.arguments),
-                        },
-                    }
-                    for tc in msg.tool_calls
-                ]
-            if msg.tool_call_id:
-                msg_dict["tool_call_id"] = msg.tool_call_id
-                msg_dict["name"] = msg.name
-            result.append(msg_dict)
-
-        # Add tools if present
-        if tools:
-            tools_msg = {
-                "role": "system",
-                "content": "You have access to the following tools. Use them when needed.",
-            }
-            result.append(tools_msg)
-
-        return result
+        return build_structural_tag_constraint(tools, config)
 
 
 # =============================================================================

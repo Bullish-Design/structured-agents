@@ -26,7 +26,6 @@ async def test_kernel_step_basic():
 
     adapter = ModelAdapter(
         name="test",
-        grammar_builder=lambda t, c: None,
         response_parser=QwenResponseParser(),
     )
 

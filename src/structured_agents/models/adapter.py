@@ -1,10 +1,9 @@
 """Model adapter for specific model families."""
 
 from __future__ import annotations
-import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
-from structured_agents.grammar.config import DecodingConstraint
+from structured_agents.grammar.pipeline import ConstraintPipeline
 from structured_agents.models.parsers import ResponseParser
 from structured_agents.types import Message, ToolSchema
 
@@ -15,11 +14,7 @@ class ModelAdapter:
 
     name: str
     response_parser: ResponseParser
-    grammar_builder: (
-        Callable[[list[ToolSchema], DecodingConstraint | None], dict[str, Any] | None]
-        | None
-    ) = None
-    grammar_config: DecodingConstraint | None = None
+    constraint_pipeline: ConstraintPipeline | None = None
     format_messages: Callable[[list[Message]], list[dict[str, Any]]] | None = field(
         default=None
     )

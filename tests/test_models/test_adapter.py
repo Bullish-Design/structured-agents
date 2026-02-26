@@ -1,8 +1,7 @@
 # tests/test_models/test_adapter.py
-import pytest
 from dataclasses import dataclass
+from structured_agents.grammar.pipeline import ConstraintPipeline
 from structured_agents.models.adapter import ModelAdapter
-from structured_agents.models.parsers import ResponseParser
 from structured_agents.types import ToolSchema, ToolCall, ToolResult, TokenUsage
 from structured_agents.grammar.config import DecodingConstraint
 
@@ -14,13 +13,17 @@ class MockParser:
 
 
 def test_model_adapter_creation():
+    pipeline = ConstraintPipeline(
+        lambda tools, config: {"grammar": "test"},
+        DecodingConstraint(),
+    )
     adapter = ModelAdapter(
         name="test_model",
-        grammar_builder=lambda tools, config: {"grammar": "test"},
         response_parser=MockParser(),
+        constraint_pipeline=pipeline,
     )
     assert adapter.name == "test_model"
-    assert adapter.grammar_builder is not None
+    assert adapter.constraint_pipeline is pipeline
 
 
 def test_model_adapter_format_messages_default():
@@ -31,5 +34,7 @@ def test_model_adapter_format_messages_default():
     from structured_agents.types import Message
 
     msg = Message(role="user", content="hello")
-    result = adapter.format_messages([msg])  # type: ignore[call-arg]
+    formatter = adapter.format_messages
+    assert formatter is not None
+    result = formatter([msg])
     assert result[0]["role"] == "user"
