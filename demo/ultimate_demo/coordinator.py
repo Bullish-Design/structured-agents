@@ -15,7 +15,13 @@ from structured_agents.models.adapter import ModelAdapter
 from structured_agents.models.parsers import QwenResponseParser
 from structured_agents.tools.protocol import Tool
 
-from demo.ultimate_demo.config import API_KEY, BASE_URL, GRAMMAR_CONFIG, MODEL_NAME
+from demo.ultimate_demo.config import (
+    API_KEY,
+    BASE_URL,
+    DISABLE_GRAMMAR,
+    GRAMMAR_CONFIG,
+    MODEL_NAME,
+)
 from demo.ultimate_demo.state import DemoState
 from demo.ultimate_demo.subagents import build_subagent_tools
 from demo.ultimate_demo.tools import build_demo_tools
@@ -46,15 +52,22 @@ def build_demo_kernel(
     subagent_tools: list[Tool],
     observer: Observer | None = None,
 ) -> AgentKernel:
-    pipeline = ConstraintPipeline(
-        builder=build_structural_tag_constraint,
-        config=GRAMMAR_CONFIG,
-    )
-    adapter = ModelAdapter(
-        name="qwen",
-        response_parser=QwenResponseParser(),
-        constraint_pipeline=pipeline,
-    )
+    if DISABLE_GRAMMAR:
+        adapter = ModelAdapter(
+            name="qwen",
+            response_parser=QwenResponseParser(),
+            constraint_pipeline=None,
+        )
+    else:
+        pipeline = ConstraintPipeline(
+            builder=build_structural_tag_constraint,
+            config=GRAMMAR_CONFIG,
+        )
+        adapter = ModelAdapter(
+            name="qwen",
+            response_parser=QwenResponseParser(),
+            constraint_pipeline=pipeline,
+        )
     client = build_client(
         {
             "base_url": BASE_URL,

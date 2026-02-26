@@ -49,8 +49,22 @@ class OpenAICompatibleClient:
             kwargs["tool_choice"] = tool_choice
         if extra_body is not None:
             kwargs["extra_body"] = extra_body
+            if "structured_outputs" in extra_body:
+                print(
+                    f"DEBUG: structural_tag payload: {extra_body['structured_outputs']['structural_tag'][:500]}..."
+                )
 
         response = await self._client.chat.completions.create(**kwargs)
+
+        if not response.choices:
+            print(f"DEBUG: Empty response choices. Response: {response}")
+            return CompletionResponse(
+                content="",
+                tool_calls=None,
+                usage=None,
+                finish_reason="empty",
+                raw_response=response.model_dump(),
+            )
 
         choice = response.choices[0]
         message = choice.message

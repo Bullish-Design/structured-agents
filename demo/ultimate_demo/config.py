@@ -9,3 +9,5 @@ GRAMMAR_CONFIG = DecodingConstraint(
     allow_parallel_calls=True,
     send_tools_to_api=False,
 )
+
+DISABLE_GRAMMAR = True
