@@ -184,3 +184,262 @@ If structural tags are required, compile the grammar server-side using xgrammar 
 - xgrammar Structural Tag: `python/xgrammar/structural_tag.py`
 - vLLM Backend: `vllm/v1/structured_output/backend_xgrammar.py`
 - Example Usage: `examples/online_serving/structured_outputs/structured_outputs.py`
+
+---
+
+# Appendix: Architecture Analysis and Recommendations
+
+## The v0.3.0 Ethos
+
+Before evaluating options, it's important to understand the guiding principles of this library:
+
+1. **Minimal complexity** - Use what's already available rather than adding layers
+2. **Deterministic behavior** - Avoid fragile workarounds or speculative fixes
+3. **Reliability** - Fail fast, don't mask errors
+4. **Dependency introspection** - Ground answers in vendored sources (`.context/`)
+5. **Verifiable answers** - All behavior must be traceable to source
+
+---
+
+## Current Library Architecture
+
+### Grammar Constraint System
+
+The library currently implements a grammar constraint system with the following components:
+
+```
+DecodingConstraint (config.py)
+    └── strategy: "ebnf" | "structural_tag" | "json_schema"
+    └── allow_parallel_calls: bool
+    └── send_tools_to_api: bool
+
+ConstraintPipeline (pipeline.py)
+    └── builder: Callable for building constraints
+    └── config: DecodingConstraint
+    └── constrain(tools) -> dict | None
+
+build_structural_tag_constraint (pipeline.py)
+    └── Converts ToolSchema list -> vLLM extra_body payload
+```
+
+### Integration Points
+
+The grammar pipeline integrates at the `AgentKernel` level:
+
+```python
+# kernel.py
+grammar_constraint = self.adapter.constraint_pipeline.constrain(resolved_tools)
+extra_body = grammar_constraint
+response = await self.client.chat_completion(..., extra_body=extra_body)
+```
+
+---
+
+## Why Native Tool Calling Already Works
+
+### vLLM's Native Tool Parsing
+
+The vLLM server is configured with:
+```python
+tool_call_parser: qwen3_xml
+enable_auto_tool_choice: True
+```
+
+This means:
+
+1. **Model outputs in Qwen XML format**:
+   ```
+   <function=add_task>{"title": "QA Review", "status": "open"}</function>
+   ```
+
+2. **vLLM's Qwen3XMLToolParser** (`qwen3xml_tool_parser.py`) extracts:
+   - Tool name: `add_task`
+   - Arguments: `{"title": "QA Review", "status": "open"}`
+
+3. **No grammar constraint needed** - The parsing happens automatically
+
+### Evidence from Server Logs
+
+```
+2026-02-26 08:21:40.871 | (APIServer pid=7) INFO: qwen3xml_tool_parser.py:1178] vLLM Successfully import tool parser Qwen3XMLToolParser !
+```
+
+The parser is loaded and active. Every successful request in the logs shows this parser being invoked.
+
+---
+
+## Evaluation of Options
+
+### Option A: Fix Grammar Constraints
+
+**Description**: Fix the `qwen_xml_parameter` issue and make structural tags work.
+
+**Implementation**:
+- Remove `qwen_xml_parameter` wrapper from schema
+- Use raw JSON Schema in structural tag definitions
+- Add error handling for grammar compilation failures
+
+**Pros**:
+- Provides deterministic output format
+- Can force model to output specific structure even if native parsing fails
+- May be useful for non-Qwen models that don't have native tool support
+
+**Cons**:
+- **Adds unnecessary complexity** - native parsing already works
+- **Fragile** - depends on xgrammar/vLLM compatibility
+- **Performance cost** - grammar compilation adds latency
+- **Maintenance burden** - must track xgrammar/vLLM changes
+- **Violates ethos** - adding work when solution already exists
+
+**Implications**:
+- Requires ongoing testing against xgrammar/vLLM combinations
+- Will likely break again with version mismatches
+- Creates divergence between "grammar-constrained" and "native" paths
+
+---
+
+### Option B: Use Native Tool Calling (Recommended)
+
+**Description**: Remove grammar constraint dependency entirely. Rely on vLLM's native tool parsing.
+
+**Implementation**:
+- Default `GRAMMAR_CONFIG = None` or don't create a constraint pipeline
+- Let vLLM handle tool extraction via `tool_call_parser`
+- Document that grammar constraints are optional
+
+**Pros**:
+- **Simpler** - no extra layer of complexity
+- **Faster** - no grammar compilation overhead
+- **More reliable** - fewer failure points
+- **Aligned with v0.3.0 ethos** - minimal, deterministic, verifiable
+- **Future-proof** - works regardless of xgrammar/vLLM changes
+- **Better for Qwen models** - uses built-in capabilities
+
+**Cons**:
+- Less control over exact output format
+- Depends on model following training/instruction
+- May not work for non-Qwen models without native tool support
+
+**Implications**:
+- Demo runs with `DISABLE_GRAMMAR = True`
+- Grammar module becomes optional/opt-in
+- Library documents native tool calling as the default path
+
+---
+
+### Option C: Hybrid Approach
+
+**Description**: Use native tool calling by default, with grammar constraints as an optional fallback.
+
+**Implementation**:
+- Default: No grammar constraint (native tool parsing)
+- Optional: Enable grammar via config flag
+- Graceful degradation: If grammar fails, fall back to native parsing
+
+**Pros**:
+- Best of both worlds
+- Works for Qwen (native) and non-Qwen (grammar) models
+- User can choose based on their needs
+
+**Cons**:
+- More complex code paths to maintain
+- Requires careful error handling
+- Two code paths to test
+
+**Implications**:
+- Config becomes: `grammar: "none" | "structural_tag" | "json_schema"`
+- Default: `grammar: "none"` (native)
+- Demo can document both approaches
+
+---
+
+## Recommendation
+
+### For v0.3.x: Option B (Native Tool Calling)
+
+Given the v0.3.0 ethos, **Option B is recommended**:
+
+1. **Remove grammar constraints from the default demo** - The demo should showcase the simplest, most reliable path
+
+2. **Keep the grammar module in the library** - But mark it as:
+   - Optional feature
+   - Currently incompatible with xgrammar 0.1.29 + vLLM 0.15.1
+   - YMMV depending on backend
+
+3. **Document the native path** - Explain how vLLM users should configure:
+   ```python
+   # Server-side (vLLM)
+   --tool-call-parser qwen3_xml
+   --enable-auto-tool-choice
+   
+   # Client-side (structured-agents)
+   # No grammar config needed - native parsing handles it
+   ```
+
+4. **Fix the JSON serialization bug anyway** - Keep the fix in `pipeline.py` as it's correct, just document that the whole grammar path is experimental
+
+### For Future Versions: Consider Option C
+
+Once the grammar system is more stable, a hybrid approach could be valuable:
+- Default to native for Qwen-family models
+- Offer grammar constraints for:
+  - Non-Qwen models that need structure
+  - Users who want guaranteed output format
+  - Advanced use cases requiring tight control
+
+---
+
+## Code Changes Required
+
+### Minimal Fix (Option B)
+
+```python
+# demo/ultimate_demo/config.py
+# Change from:
+GRAMMAR_CONFIG = DecodingConstraint(...)
+DISABLE_GRAMMAR = True
+
+# To:
+# Grammar constraints disabled - using native vLLM tool parsing
+# Set to a DecodingConstraint to enable grammar constraints (experimental)
+GRAMMAR_CONFIG = None
+```
+
+```python
+# demo/ultimate_demo/coordinator.py
+# In build_demo_kernel:
+if GRAMMAR_CONFIG is None:
+    adapter = ModelAdapter(..., constraint_pipeline=None)
+else:
+    pipeline = ConstraintPipeline(...)
+    adapter = ModelAdapter(..., constraint_pipeline=pipeline)
+```
+
+### Full Refactor (Option C)
+
+Add to config:
+```python
+GRAMMAR_STRATEGY = "none"  # "none" | "structural_tag" | "json_schema"
+```
+
+Update pipeline to handle `"none"`:
+```python
+def build_structural_tag_constraint(tools, config):
+    if config is None or config.strategy == "none":
+        return None
+    # ... existing logic
+```
+
+---
+
+## Conclusion
+
+The root cause (`qwen_xml_parameter` not supported by xgrammar) is a symptom of a deeper architectural question: **should the library add grammar constraints when the backend already provides native tool parsing?**
+
+Given the v0.3.0 ethos of minimal complexity and deterministic behavior, the answer is **no**. The library should:
+
+1. **Default to native tool calling** - simplest, most reliable
+2. **Keep grammar as optional** - for advanced use cases
+3. **Document both paths** - let users choose
+
+This aligns with the principle: "Don't build what you don't need." The model + vLLM already provides structured outputs; the library's value is in orchestration, not in re-implementing what already works.
