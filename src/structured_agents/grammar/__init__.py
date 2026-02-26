@@ -6,9 +6,12 @@ from structured_agents.grammar.artifacts import (
     JsonSchemaGrammar,
     StructuralTagGrammar,
 )
-from structured_agents.grammar.config import GrammarConfig
+from structured_agents.grammar.config import DecodingConstraint, GrammarConfig
+from structured_agents.grammar.pipeline import ConstraintPipeline
 
 __all__ = [
+    "ConstraintPipeline",
+    "DecodingConstraint",
     "EBNFGrammar",
     "GrammarArtifact",
     "GrammarConfig",
