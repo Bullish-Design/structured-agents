@@ -9,13 +9,23 @@ from structured_agents.types import (
     StepResult,
     RunResult,
 )
-from structured_agents.tools import Tool, GrailTool, discover_tools
-from structured_agents.models import ModelAdapter, ResponseParser, QwenResponseParser
-from structured_agents.grammar import DecodingConstraint, StructuredOutputModel
+from structured_agents.tools import Tool
+from structured_agents.parsing import (
+    ResponseParser,
+    DefaultResponseParser,
+    get_response_parser,
+)
+from structured_agents.grammar import (
+    DecodingConstraint,
+    StructuredOutputModel,
+    ConstraintPipeline,
+)
 from structured_agents.events import (
     Observer,
     NullObserver,
+    CompositeObserver,
     Event,
+    KernelEvent,
     KernelStartEvent,
     KernelEndEvent,
     ModelRequestEvent,
@@ -25,17 +35,20 @@ from structured_agents.events import (
     TurnCompleteEvent,
 )
 from structured_agents.kernel import AgentKernel
-from structured_agents.agent import Agent, AgentManifest, load_manifest
-from structured_agents.client import LLMClient, OpenAICompatibleClient, build_client
+from structured_agents.client import (
+    LLMClient,
+    CompletionResponse,
+    OpenAICompatibleClient,
+    LiteLLMClient,
+    build_client,
+)
 from structured_agents.exceptions import (
     StructuredAgentsError,
     KernelError,
     ToolExecutionError,
-    BundleError,
-    AdapterError,
 )
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 __all__ = [
     # Types
@@ -48,19 +61,20 @@ __all__ = [
     "RunResult",
     # Tools
     "Tool",
-    "GrailTool",
-    "discover_tools",
-    # Models
-    "ModelAdapter",
+    # Parsing
     "ResponseParser",
-    "QwenResponseParser",
+    "DefaultResponseParser",
+    "get_response_parser",
     # Grammar
     "DecodingConstraint",
     "StructuredOutputModel",
+    "ConstraintPipeline",
     # Events
     "Observer",
     "NullObserver",
+    "CompositeObserver",
     "Event",
+    "KernelEvent",
     "KernelStartEvent",
     "KernelEndEvent",
     "ModelRequestEvent",
@@ -70,17 +84,14 @@ __all__ = [
     "TurnCompleteEvent",
     # Core
     "AgentKernel",
-    "Agent",
-    "AgentManifest",
-    "load_manifest",
     # Client
     "LLMClient",
+    "CompletionResponse",
     "OpenAICompatibleClient",
+    "LiteLLMClient",
     "build_client",
     # Exceptions
     "StructuredAgentsError",
     "KernelError",
     "ToolExecutionError",
-    "BundleError",
-    "AdapterError",
 ]

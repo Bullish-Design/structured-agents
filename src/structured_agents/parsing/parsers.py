@@ -15,8 +15,13 @@ class ResponseParser(Protocol):
     ) -> tuple[str | None, list[ToolCall]]: ...
 
 
-class QwenResponseParser:
-    """Parser for Qwen models."""
+class DefaultResponseParser:
+    """Default parser for tool-calling models.
+
+    Handles:
+    - OpenAI-style tool_calls from the API response
+    - XML-style <tool_call> tags in content (fallback)
+    """
 
     def parse(
         self, content: str | None, tool_calls: list[dict[str, Any]] | None
@@ -61,3 +66,50 @@ class QwenResponseParser:
                 pass
 
         return tool_calls
+
+
+# Registry for model-specific parsers
+_PARSER_REGISTRY: dict[str, type[ResponseParser]] = {
+    "qwen": DefaultResponseParser,
+    "function_gemma": DefaultResponseParser,
+}
+
+
+def get_response_parser(model_name: str) -> ResponseParser:
+    """Look up the response parser for a model family.
+
+    Args:
+        model_name: Model family name (e.g., "qwen", "function_gemma")
+
+    Returns:
+        A ResponseParser instance for the model family.
+        Defaults to DefaultResponseParser if no specific parser is registered.
+    """
+    # Strip provider prefix if present (e.g., "hosted_vllm/Qwen/..." -> "Qwen/...")
+    if "/" in model_name:
+        parts = model_name.split("/")
+        # Check for known provider prefixes
+        known_prefixes = {
+            "hosted_vllm",
+            "anthropic",
+            "openai",
+            "gemini",
+            "azure",
+            "bedrock",
+            "vertex_ai",
+        }
+        if parts[0] in known_prefixes:
+            model_name = "/".join(parts[1:])
+
+    # Try exact match first
+    parser_cls = _PARSER_REGISTRY.get(model_name)
+
+    # Try lowercase
+    if parser_cls is None:
+        parser_cls = _PARSER_REGISTRY.get(model_name.lower())
+
+    # Default to DefaultResponseParser
+    if parser_cls is None:
+        parser_cls = DefaultResponseParser
+
+    return parser_cls()

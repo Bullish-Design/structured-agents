@@ -2,9 +2,9 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from structured_agents import AgentKernel
-from structured_agents.models import ModelAdapter, QwenResponseParser
+from structured_agents.parsing import DefaultResponseParser
 from structured_agents.tools import Tool
-from structured_agents.types import Message, ToolSchema, ToolResult
+from structured_agents.types import Message, ToolSchema, ToolResult, TokenUsage
 from structured_agents.client.protocol import CompletionResponse
 
 
@@ -13,6 +13,7 @@ async def test_full_agent_loop():
     """End-to-end test of agent running one turn."""
 
     mock_client = AsyncMock()
+    mock_client.model = "test-model"
 
     # First call returns tool call, second call returns final answer
     call_count = 0
@@ -33,7 +34,9 @@ async def test_full_agent_loop():
                         },
                     }
                 ],
-                usage=MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+                usage=TokenUsage(
+                    prompt_tokens=10, completion_tokens=5, total_tokens=15
+                ),
                 finish_reason="tool_calls",
                 raw_response={},
             )
@@ -41,7 +44,9 @@ async def test_full_agent_loop():
             return CompletionResponse(
                 content="The result is 3.",
                 tool_calls=None,
-                usage=MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+                usage=TokenUsage(
+                    prompt_tokens=10, completion_tokens=5, total_tokens=15
+                ),
                 finish_reason="stop",
                 raw_response={},
             )
@@ -64,14 +69,11 @@ async def test_full_agent_loop():
         )
     )
 
-    adapter = ModelAdapter(
-        name="test",
-        response_parser=QwenResponseParser(),
-    )
+    response_parser = DefaultResponseParser()
 
     kernel = AgentKernel(
         client=mock_client,
-        adapter=adapter,
+        response_parser=response_parser,
         tools=[mock_tool],
     )
 

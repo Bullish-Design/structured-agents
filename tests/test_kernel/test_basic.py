@@ -2,8 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from structured_agents.kernel import AgentKernel
-from structured_agents.models.adapter import ModelAdapter
-from structured_agents.models.parsers import QwenResponseParser
+from structured_agents.parsing import DefaultResponseParser
 from structured_agents.tools.protocol import Tool
 from structured_agents.types import ToolSchema, ToolResult, Message
 from structured_agents.client.protocol import CompletionResponse
@@ -13,6 +12,7 @@ from structured_agents.client.protocol import CompletionResponse
 async def test_kernel_step_basic():
     # Setup mocks
     mock_client = AsyncMock()
+    mock_client.model = "test-model"
     mock_client.chat_completion = AsyncMock(
         return_value=CompletionResponse(
             content="Hello",
@@ -24,10 +24,7 @@ async def test_kernel_step_basic():
     )
     mock_client.close = AsyncMock()
 
-    adapter = ModelAdapter(
-        name="test",
-        response_parser=QwenResponseParser(),
-    )
+    response_parser = DefaultResponseParser()
 
     # Minimal tool
     mock_tool = MagicMock(spec=Tool)
@@ -40,7 +37,7 @@ async def test_kernel_step_basic():
 
     kernel = AgentKernel(
         client=mock_client,
-        adapter=adapter,
+        response_parser=response_parser,
         tools=[mock_tool],
     )
 

@@ -1,13 +1,25 @@
-"""Models package for model-specific adapters."""
+"""Models package - backwards compatibility shim.
 
-from structured_agents.models.adapter import ModelAdapter
-from structured_agents.models.parsers import (
+The models package is deprecated. Use the parsing package instead:
+- ResponseParser, DefaultResponseParser -> from structured_agents.parsing
+- get_response_parser -> from structured_agents.parsing
+
+ModelAdapter has been removed - AgentKernel now takes response_parser
+and constraint_pipeline directly.
+"""
+
+from structured_agents.parsing import (
     ResponseParser,
-    QwenResponseParser,
+    DefaultResponseParser,
+    get_response_parser,
 )
 
+# Backwards compatibility alias
+QwenResponseParser = DefaultResponseParser
+
 __all__ = [
-    "ModelAdapter",
     "ResponseParser",
+    "DefaultResponseParser",
     "QwenResponseParser",
+    "get_response_parser",
 ]

@@ -32,11 +32,3 @@ class ToolExecutionError(StructuredAgentsError):
         self.tool_name = tool_name
         self.call_id = call_id
         self.code = code
-
-
-class BundleError(StructuredAgentsError):
-    """Error loading or validating a bundle."""
-
-
-class AdapterError(StructuredAgentsError):
-    """Error in model adapter (parsing, formatting, etc.)."""

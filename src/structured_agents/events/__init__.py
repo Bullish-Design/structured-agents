@@ -2,6 +2,7 @@
 
 from structured_agents.events.types import (
     Event,
+    KernelEvent,
     KernelStartEvent,
     KernelEndEvent,
     ModelRequestEvent,
@@ -14,6 +15,7 @@ from structured_agents.events.observer import Observer, NullObserver, CompositeO
 
 __all__ = [
     "Event",
+    "KernelEvent",
     "KernelStartEvent",
     "KernelEndEvent",
     "ModelRequestEvent",

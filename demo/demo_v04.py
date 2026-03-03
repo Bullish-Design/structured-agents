@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 """
-structured-agents v0.3.0 Demo
+structured-agents v0.4.0 Demo
 
 This demo demonstrates all core functionality of the structured-agents library:
-- Tool protocol and GrailTool implementation
-- ModelAdapter for model-specific behavior
+- Tool protocol for custom tools
+- ResponseParser for model-specific behavior
 - DecodingConstraint for grammar-constrained decoding
 - AgentKernel for the core agent loop
-- Agent as the high-level entry point
 - Unified event system with Observer protocol
-- LLMClient for API connections
+- LLMClient for API connections (OpenAI and LiteLLM)
 
 The demo runs against a real vLLM server at remora-server:8000 with the Qwen model.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
-from pathlib import Path
+from dataclasses import dataclass
+from typing import Any
 
 from structured_agents.grammar.pipeline import ConstraintPipeline
 
 # =============================================================================
-# IMPORTS - All v0.3.0 Core Concepts
+# IMPORTS - All v0.4.0 Core Concepts
 # =============================================================================
 
 from structured_agents import (
@@ -35,18 +37,16 @@ from structured_agents import (
     RunResult,
     # Tools
     Tool,
-    GrailTool,
-    # Models
-    ModelAdapter,
-    QwenResponseParser,
+    # Parsing (replaces ModelAdapter)
+    ResponseParser,
+    DefaultResponseParser,
     # Grammar
     DecodingConstraint,
-    StructuredOutputModel,
     StructuredOutputModel,
     # Events
     Observer,
     NullObserver,
-    Event,
+    KernelEvent,
     KernelStartEvent,
     KernelEndEvent,
     ModelRequestEvent,
@@ -56,8 +56,6 @@ from structured_agents import (
     TurnCompleteEvent,
     # Core
     AgentKernel,
-    Agent,
-    AgentManifest,
     # Client
     LLMClient,
     OpenAICompatibleClient,
@@ -66,52 +64,90 @@ from structured_agents import (
 
 
 # =============================================================================
-# STEP 1: Define Custom Grail Tool Scripts
-# =============================================================================
-
-# Tool scripts are defined as .pym files in demo_tools/ directory
-# These will be loaded by the discover_tools function
-
-DEMO_TOOLS_DIR = Path(__file__).parent / "demo_tools"
-
-
-# =============================================================================
-# STEP 2: Implement Tool Discovery (discovers .pym files)
+# STEP 1: Define Custom Tools (native Python, no .pym)
 # =============================================================================
 
 
-def discover_tools(agents_dir: str) -> list[GrailTool]:
-    """Discover and load .pym tools from a directory."""
-    from grail import load, Limits
+@dataclass
+class AddTool(Tool):
+    """Tool that adds two numbers."""
 
-    tools = []
-    tools_path = Path(agents_dir)
+    @property
+    def schema(self) -> ToolSchema:
+        return ToolSchema(
+            name="add",
+            description="Add two numbers together",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number", "description": "First number"},
+                    "b": {"type": "number", "description": "Second number"},
+                },
+                "required": ["a", "b"],
+            },
+        )
 
-    if not tools_path.exists():
-        print(f"  [discover_tools] Directory does not exist: {tools_path}")
-        return []
+    async def execute(
+        self, arguments: dict[str, Any], context: ToolCall | None
+    ) -> ToolResult:
+        a = arguments.get("a", 0)
+        b = arguments.get("b", 0)
+        result = a + b
+        return ToolResult(
+            call_id=context.id if context else "",
+            name=self.schema.name,
+            output=json.dumps({"result": result}),
+            is_error=False,
+        )
 
-    for pym_file in tools_path.glob("*.pym"):
-        try:
-            script = load(str(pym_file), limits=Limits.default())
-            tool = GrailTool(script=script, limits=Limits.default())
-            tools.append(tool)
-            print(f"  [discover_tools] Loaded tool: {script.name}")
-        except Exception as e:
-            print(f"  [discover_tools] Failed to load {pym_file.name}: {e}")
 
-    return tools
+@dataclass
+class MultiplyTool(Tool):
+    """Tool that multiplies two numbers."""
+
+    @property
+    def schema(self) -> ToolSchema:
+        return ToolSchema(
+            name="multiply",
+            description="Multiply two numbers together",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number", "description": "First number"},
+                    "b": {"type": "number", "description": "Second number"},
+                },
+                "required": ["a", "b"],
+            },
+        )
+
+    async def execute(
+        self, arguments: dict[str, Any], context: ToolCall | None
+    ) -> ToolResult:
+        a = arguments.get("a", 0)
+        b = arguments.get("b", 0)
+        result = a * b
+        return ToolResult(
+            call_id=context.id if context else "",
+            name=self.schema.name,
+            output=json.dumps({"result": result}),
+            is_error=False,
+        )
+
+
+def build_demo_tools() -> list[Tool]:
+    """Build list of demo tools."""
+    return [AddTool(), MultiplyTool()]
 
 
 # =============================================================================
-# STEP 3: Custom Event Observer
+# STEP 2: Custom Event Observer
 # =============================================================================
 
 
 class DemoObserver:
     """Observer that prints events during agent execution."""
 
-    async def emit(self, event: Event) -> None:
+    async def emit(self, event: KernelEvent) -> None:
         if isinstance(event, KernelStartEvent):
             print(
                 f"\n[KERNEL START] max_turns={event.max_turns}, tools={event.tools_count}"
@@ -139,26 +175,7 @@ class DemoObserver:
 
 
 # =============================================================================
-# STEP 4: Custom Model Adapter (demonstrates extensibility)
-# =============================================================================
-
-
-class DemoModelAdapter(ModelAdapter):
-    """Custom adapter that demonstrates model-specific behavior."""
-
-    def __init__(self, name: str = "qwen"):
-        pipeline = ConstraintPipeline(
-            DecodingConstraint(strategy="structural_tag", allow_parallel_calls=True)
-        )
-        super().__init__(
-            name=name,
-            response_parser=QwenResponseParser(),
-            constraint_pipeline=pipeline,
-        )
-
-
-# =============================================================================
-# STEP 5: Demo - Direct Kernel Usage
+# STEP 3: Demo - Direct Kernel Usage
 # =============================================================================
 
 
@@ -168,31 +185,37 @@ async def demo_kernel_direct():
     print("DEMO 1: Direct AgentKernel Usage")
     print("=" * 60)
 
-    # Discover tools
-    print("\n[Step 1] Discovering tools...")
-    tools = discover_tools(str(DEMO_TOOLS_DIR))
+    # Build tools
+    print("\n[Step 1] Building tools...")
+    tools = build_demo_tools()
     print(f"  Found {len(tools)} tools: {[t.schema.name for t in tools]}")
 
-    # Build client
+    # Build client with v0.4 LiteLLM routing
     print("\n[Step 2] Building LLM client...")
+    model_name = "hosted_vllm/Qwen/Qwen3-4B-Instruct-2507-FP8"
     client = build_client(
         {
             "base_url": "http://remora-server:8000/v1",
             "api_key": "EMPTY",
-            "model": "Qwen/Qwen3-4B-Instruct-2507-FP8",
+            "model": model_name,
             "timeout": 120.0,
         }
     )
 
-    # Build adapter
-    print("\n[Step 3] Building ModelAdapter...")
-    adapter = DemoModelAdapter(name="qwen")
+    # Build constraint pipeline
+    print("\n[Step 3] Building ConstraintPipeline...")
+    constraint = DecodingConstraint(
+        strategy="structural_tag", allow_parallel_calls=True
+    )
+    pipeline = ConstraintPipeline(constraint)
 
-    # Build kernel
+    # Build kernel (v0.4 API - no adapter indirection)
     print("\n[Step 4] Building AgentKernel...")
     kernel = AgentKernel(
         client=client,
-        adapter=adapter,
+        model=model_name,
+        response_parser=DefaultResponseParser(),
+        constraint_pipeline=pipeline,
         tools=tools,
         observer=DemoObserver(),
         max_tokens=1024,
@@ -227,72 +250,14 @@ async def demo_kernel_direct():
 
 
 # =============================================================================
-# STEP 6: Demo - Agent High-Level API
-# =============================================================================
-
-
-async def demo_agent_api():
-    """Demonstrate the Agent high-level API."""
-    print("\n" + "=" * 60)
-    print("DEMO 2: Agent High-Level API")
-    print("=" * 60)
-
-    # For this demo, we'll create an in-memory agent without loading from bundle
-    print("\n[Step 1] Building agent components...")
-
-    tools = discover_tools(str(DEMO_TOOLS_DIR))
-    print(f"  Tools: {[t.schema.name for t in tools]}")
-
-    client = build_client(
-        {
-            "base_url": "http://remora-server:8000/v1",
-            "api_key": "EMPTY",
-            "model": "Qwen/Qwen3-4B-Instruct-2507-FP8",
-        }
-    )
-
-    adapter = DemoModelAdapter()
-
-    kernel = AgentKernel(
-        client=client,
-        adapter=adapter,
-        tools=tools,
-        observer=DemoObserver(),
-    )
-
-    # Create manifest
-    manifest = AgentManifest(
-        name="demo-agent",
-        system_prompt="You are a helpful assistant with access to tools for math operations.",
-        agents_dir=DEMO_TOOLS_DIR,
-    )
-
-    # Create agent
-    agent = Agent(kernel=kernel, manifest=manifest)
-
-    # Run agent
-    print("\n[Step 2] Running agent...")
-    result = await agent.run("What is 10 + 20? Use the add tool.")
-
-    print("\n[Results]")
-    print(f"  Turn count: {result.turn_count}")
-    print(f"  Termination: {result.termination_reason}")
-    print(f"  Final message: {result.final_message.content}")
-
-    await agent.close()
-
-    return result
-
-
-# =============================================================================
-# STEP 7: Demo - Event Types
+# STEP 4: Demo - Event Types
 # =============================================================================
 
 
 async def demo_events():
     """Demonstrate the event system."""
     print("\n" + "=" * 60)
-    print("DEMO 3: Event System")
+    print("DEMO 2: Event System")
     print("=" * 60)
 
     # Create some events
@@ -333,18 +298,25 @@ async def demo_events():
     )
     print("  NullObserver works!")
 
+    # Demonstrate Pydantic serialization (new in v0.4)
+    print("\n[Pydantic Serialization (v0.4)]")
+    event = ToolCallEvent(
+        turn=1, tool_name="add", call_id="call_123", arguments={"a": 1, "b": 2}
+    )
+    print(f"  JSON: {event.model_dump_json()}")
+
     return events
 
 
 # =============================================================================
-# STEP 8: Demo - Grammar/Constraint Pipeline
+# STEP 5: Demo - Grammar/Constraint Pipeline
 # =============================================================================
 
 
 def demo_grammar_pipeline():
     """Demonstrate the grammar constraint pipeline."""
     print("\n" + "=" * 60)
-    print("DEMO 4: Grammar/Constraint Pipeline")
+    print("DEMO 3: Grammar/Constraint Pipeline")
     print("=" * 60)
 
     class SimpleStructuredOutput(StructuredOutputModel):
@@ -398,14 +370,14 @@ def demo_grammar_pipeline():
 
 
 # =============================================================================
-# STEP 9: Demo - Types and Core Classes
+# STEP 6: Demo - Types and Core Classes
 # =============================================================================
 
 
 def demo_types():
     """Demonstrate core types."""
     print("\n" + "=" * 60)
-    print("DEMO 5: Core Types")
+    print("DEMO 4: Core Types")
     print("=" * 60)
 
     # Message
@@ -464,31 +436,37 @@ def demo_types():
 
 
 # =============================================================================
-# STEP 10: Demo - Full Multi-Turn Conversation
+# STEP 7: Demo - Full Multi-Turn Conversation
 # =============================================================================
 
 
 async def demo_full_conversation():
-    """Run a full multi-turn conversation with the agent."""
+    """Run a full multi-turn conversation with the kernel."""
     print("\n" + "=" * 60)
-    print("DEMO 6: Full Multi-Turn Conversation")
+    print("DEMO 5: Full Multi-Turn Conversation")
     print("=" * 60)
 
-    tools = discover_tools(str(DEMO_TOOLS_DIR))
+    tools = build_demo_tools()
 
+    model_name = "hosted_vllm/Qwen/Qwen3-4B-Instruct-2507-FP8"
     client = build_client(
         {
             "base_url": "http://remora-server:8000/v1",
             "api_key": "EMPTY",
-            "model": "Qwen/Qwen3-4B-Instruct-2507-FP8",
+            "model": model_name,
         }
     )
 
-    adapter = DemoModelAdapter()
+    constraint = DecodingConstraint(
+        strategy="structural_tag", allow_parallel_calls=True
+    )
+    pipeline = ConstraintPipeline(constraint)
 
     kernel = AgentKernel(
         client=client,
-        adapter=adapter,
+        model=model_name,
+        response_parser=DefaultResponseParser(),
+        constraint_pipeline=pipeline,
         tools=tools,
         observer=DemoObserver(),
         max_tokens=1024,
@@ -527,6 +505,33 @@ async def demo_full_conversation():
 
 
 # =============================================================================
+# STEP 8: Demo - Provider Routing (v0.4 feature)
+# =============================================================================
+
+
+def demo_provider_routing():
+    """Demonstrate the v0.4 provider routing."""
+    print("\n" + "=" * 60)
+    print("DEMO 6: Provider Routing (v0.4)")
+    print("=" * 60)
+
+    test_cases = [
+        ("hosted_vllm/Qwen/Qwen3-4B", "LiteLLM with base_url"),
+        ("anthropic/claude-3-sonnet", "LiteLLM (Anthropic)"),
+        ("openai/gpt-4o", "LiteLLM (OpenAI)"),
+        ("gpt-4o", "OpenAICompatibleClient (backwards compat)"),
+    ]
+
+    print("\n[Provider Routing]")
+    for model, expected in test_cases:
+        client = build_client({"model": model, "api_key": "test"})
+        client_type = type(client).__name__
+        print(f"  {model} -> {client_type} ({expected})")
+
+    return test_cases
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -534,12 +539,13 @@ async def demo_full_conversation():
 async def main():
     """Run all demos."""
     print("\n" + "#" * 60)
-    print("# structured-agents v0.3.0 Demo")
+    print("# structured-agents v0.4.0 Demo")
     print("#" * 60)
 
-    # Run demos
+    # Run demos that don't require server
     demo_types()
     demo_grammar_pipeline()
+    demo_provider_routing()
     await demo_events()
 
     # These require the vLLM server
@@ -547,11 +553,6 @@ async def main():
         await demo_kernel_direct()
     except Exception as e:
         print(f"\n[ERROR] Kernel demo failed: {e}")
-
-    try:
-        await demo_agent_api()
-    except Exception as e:
-        print(f"\n[ERROR] Agent demo failed: {e}")
 
     try:
         await demo_full_conversation()

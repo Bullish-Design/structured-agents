@@ -19,7 +19,7 @@ class AgentRunner(Protocol):
 @dataclass
 class DemoRunner:
     state: DemoState
-    agent: AgentRunner
+    coordinator: AgentRunner
     tool_names: list[str]
     subagent_names: list[str]
 
@@ -28,7 +28,7 @@ class DemoRunner:
         self.state.outbox = []
 
         for message in self.state.inbox:
-            result = await self.agent.run(message)
+            result = await self.coordinator.run(message)
             self.state.outbox.append(result.final_message.content or "")
 
         return self.state
@@ -52,7 +52,7 @@ def build_demo_runner(observer: Observer | None = None) -> DemoRunner:
     subagent_names = [tool.schema.name for tool in coordinator.subagent_tools]
     return DemoRunner(
         state=coordinator.state,
-        agent=coordinator.agent,
+        coordinator=coordinator,
         tool_names=tool_names,
         subagent_names=subagent_names,
     )

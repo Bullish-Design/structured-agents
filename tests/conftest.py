@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from structured_agents.client.protocol import CompletionResponse
-from structured_agents.models.adapter import ModelAdapter
-from structured_agents.models.parsers import QwenResponseParser
+from structured_agents.parsing import DefaultResponseParser
 from structured_agents.types import (
     Message,
     ToolCall,
@@ -38,9 +37,9 @@ def mock_client():
 
 
 @pytest.fixture
-def adapter():
-    """A real ModelAdapter with QwenResponseParser."""
-    return ModelAdapter(name="test", response_parser=QwenResponseParser())
+def response_parser():
+    """A DefaultResponseParser instance."""
+    return DefaultResponseParser()
 
 
 @pytest.fixture

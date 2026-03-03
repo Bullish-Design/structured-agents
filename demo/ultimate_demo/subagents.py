@@ -7,8 +7,7 @@ from structured_agents.client import build_client
 from structured_agents.events.observer import NullObserver, Observer
 from structured_agents.grammar.pipeline import ConstraintPipeline
 from structured_agents.kernel import AgentKernel
-from structured_agents.models.adapter import ModelAdapter
-from structured_agents.models.parsers import QwenResponseParser
+from structured_agents.parsing import DefaultResponseParser
 from structured_agents.tools.protocol import Tool
 from structured_agents.types import Message, ToolCall, ToolResult, ToolSchema
 
@@ -229,24 +228,26 @@ def build_subagent_tools(
 
 
 def _build_subagent_kernel(tools: list[Tool], observer: Observer | None) -> AgentKernel:
+    """Build subagent kernel with v0.4 API."""
     pipeline = (
         ConstraintPipeline(GRAMMAR_CONFIG) if GRAMMAR_CONFIG is not None else None
     )
-    adapter = ModelAdapter(
-        name="qwen",
-        response_parser=QwenResponseParser(),
-        constraint_pipeline=pipeline,
-    )
+
+    # v0.4: Use hosted_vllm/ prefix for LiteLLM routing with grammar support
+    model_name = f"hosted_vllm/{MODEL_NAME}"
+
     client = build_client(
         {
             "base_url": BASE_URL,
             "api_key": API_KEY,
-            "model": MODEL_NAME,
+            "model": model_name,
         }
     )
     return AgentKernel(
         client=client,
-        adapter=adapter,
+        model=model_name,
+        response_parser=DefaultResponseParser(),
+        constraint_pipeline=pipeline,
         tools=tools,
         observer=observer or NullObserver(),
     )

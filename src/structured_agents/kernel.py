@@ -19,7 +19,8 @@ from structured_agents.events.types import (
     TurnCompleteEvent,
 )
 from structured_agents.exceptions import KernelError
-from structured_agents.models.adapter import ModelAdapter
+from structured_agents.grammar.pipeline import ConstraintPipeline
+from structured_agents.parsing.parsers import ResponseParser, DefaultResponseParser
 from structured_agents.tools.protocol import Tool
 from structured_agents.types import (
     Message,
@@ -32,14 +33,39 @@ from structured_agents.types import (
 )
 
 
+# Provider prefixes that support grammar constraints (via extra_body)
+_GRAMMAR_SUPPORTED_PREFIXES = ("hosted_vllm/",)
+
+
+def _supports_grammar_constraints(model: str) -> bool:
+    """Check if a model supports grammar constraints via extra_body."""
+    return any(model.startswith(prefix) for prefix in _GRAMMAR_SUPPORTED_PREFIXES)
+
+
 @dataclass
 class AgentKernel:
-    """The core agent loop orchestrator."""
+    """The core agent loop orchestrator.
+
+    The kernel runs a step loop: call LLM -> parse response -> execute tools -> repeat.
+
+    Args:
+        client: LLM client for making completion requests
+        response_parser: Parser for extracting tool calls from model output
+        tools: Sequence of tools available to the agent
+        observer: Event observer for lifecycle events
+        constraint_pipeline: Optional grammar constraint pipeline (vLLM only)
+        max_history_messages: Maximum messages to keep in history
+        max_concurrency: Maximum concurrent tool executions
+        max_tokens: Maximum tokens per completion
+        temperature: Sampling temperature
+        tool_choice: Tool choice strategy
+    """
 
     client: LLMClient
-    adapter: ModelAdapter
+    response_parser: ResponseParser = field(default_factory=DefaultResponseParser)
     tools: Sequence[Tool] = field(default_factory=list)
     observer: Observer = field(default_factory=NullObserver)
+    constraint_pipeline: ConstraintPipeline | None = None
     max_history_messages: int = 50
     max_concurrency: int = 1
     max_tokens: int = 4096
@@ -65,22 +91,18 @@ class AgentKernel:
                 if tool:
                     resolved_tools.append(tool.schema)
 
-        formatter = self.adapter.format_messages
-        formatted_messages = formatter(messages) if formatter else []
+        # Format messages and tools for API
+        formatted_messages = [msg.to_openai_format() for msg in messages]
+        formatted_tools = (
+            [ts.to_openai_format() for ts in resolved_tools] if resolved_tools else None
+        )
 
-        if resolved_tools:
-            tool_formatter = self.adapter.format_tools
-            formatted_tools = tool_formatter(resolved_tools) if tool_formatter else None
-        else:
-            formatted_tools = None
-
-        grammar_constraint = None
-        if self.adapter.constraint_pipeline:
-            grammar_constraint = self.adapter.constraint_pipeline.constrain(
-                resolved_tools
-            )
-
-        extra_body = grammar_constraint
+        # Apply grammar constraints only for supported providers
+        extra_body = None
+        if self.constraint_pipeline and _supports_grammar_constraints(
+            self.client.model
+        ):
+            extra_body = self.constraint_pipeline.constrain(resolved_tools)
 
         request_start = time.perf_counter()
         try:
@@ -115,7 +137,7 @@ class AgentKernel:
             )
         )
 
-        content, tool_calls = self.adapter.response_parser.parse(
+        content, tool_calls = self.response_parser.parse(
             response.content, response.tool_calls
         )
 
@@ -229,15 +251,6 @@ class AgentKernel:
 
             if len(messages) > self.max_history_messages:
                 messages = [messages[0]] + messages[-(self.max_history_messages - 1) :]
-
-            await self.observer.emit(
-                ModelRequestEvent(
-                    turn=turn_count,
-                    messages_count=len(messages),
-                    tools_count=len(self.tools),
-                    model=self.client.model,
-                )
-            )
 
             step_result = await self.step(messages, tools, turn=turn_count)
 
